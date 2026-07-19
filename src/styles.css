@@ -159,6 +159,17 @@ select {
   user-select: auto;
 }
 
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 label input,
 label select,
 .search-box input {
@@ -767,13 +778,19 @@ tr:last-child td {
 .rack-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(360px, 430px));
+  justify-content: start;
+}
+
+.rack-card {
+  position: relative;
 }
 
 .rack-title {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+  padding-right: 28px;
 }
 
 .rack-title strong {
@@ -798,8 +815,8 @@ tr:last-child td {
 .rack-row {
   align-items: center;
   display: grid;
-  gap: 8px;
-  grid-template-columns: 28px 44px minmax(0, 1fr);
+  gap: 6px;
+  grid-template-columns: 22px 34px minmax(0, 1fr);
 }
 
 .rack-row span {
@@ -810,8 +827,32 @@ tr:last-child td {
 
 .rack-row input {
   min-height: 34px;
-  padding: 6px;
+  padding: 4px;
   text-align: center;
+}
+
+.module-check {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  display: flex;
+  height: 16px;
+  justify-content: center;
+  padding: 0;
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  width: 16px;
+  z-index: 2;
+}
+
+.module-check span {
+  background: #0b74bd;
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  width: 8px;
 }
 
 .shelf-preview {
@@ -887,6 +928,6 @@ tr:last-child td {
   }
 
   .rack-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }

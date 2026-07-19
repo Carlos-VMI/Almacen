@@ -28,7 +28,7 @@ const emptyArticle = {
   codigo_cliente: '',
   sku: '',
   descripcion: '',
-  sufijos: [{ sufijo: '01', capacidad: 1 }],
+  sufijos: [{ sufijo: '01', capacidad: '' }],
 };
 const emptyOperator = { nombre: '', email: '', rol: 'operador', pin: '', activo: true };
 const suffixOptions = ['01', '02', '03', '04'];
@@ -55,8 +55,23 @@ function normalizeSuffixes(value) {
   return [{ sufijo: '01', capacidad: 1 }];
 }
 
+function normalizeFormSuffixes(value) {
+  if (Array.isArray(value) && value.length) {
+    return value.map((item, index) => ({
+      sufijo: suffixOptions.includes(String(item.sufijo).padStart(2, '0'))
+        ? String(item.sufijo).padStart(2, '0')
+        : suffixOptions[Math.min(index, suffixOptions.length - 1)],
+      capacidad: item.capacidad === '' || item.capacidad === null || item.capacidad === undefined
+        ? ''
+        : Math.max(0, toNumber(item.capacidad ?? item.cantidad, 0)),
+    }));
+  }
+
+  return [{ sufijo: '01', capacidad: '' }];
+}
+
 function cloneEmptyArticle() {
-  return { ...emptyArticle, sufijos: normalizeSuffixes(emptyArticle.sufijos) };
+  return { ...emptyArticle, sufijos: normalizeFormSuffixes(emptyArticle.sufijos) };
 }
 
 function normalizeImportKey(value) {
@@ -400,7 +415,7 @@ function ArticleManager({ warehouse, refreshKey }) {
   }, [warehouse.id, refreshKey]);
 
   useEffect(() => {
-    setForm(selected ? { ...selected, sufijos: normalizeSuffixes(selected.sufijos) } : cloneEmptyArticle());
+    setForm(selected ? { ...selected, sufijos: normalizeFormSuffixes(selected.sufijos) } : cloneEmptyArticle());
   }, [selected]);
 
   async function loadArticles() {
@@ -498,7 +513,7 @@ function ArticleManager({ warehouse, refreshKey }) {
   function updateSuffix(index, field, value) {
     setForm((current) => ({
       ...current,
-      sufijos: normalizeSuffixes(current.sufijos).map((item, itemIndex) => (
+      sufijos: normalizeFormSuffixes(current.sufijos).map((item, itemIndex) => (
         itemIndex === index ? { ...item, [field]: value } : item
       )),
     }));
@@ -506,20 +521,20 @@ function ArticleManager({ warehouse, refreshKey }) {
 
   function addSuffix() {
     setForm((current) => {
-      const currentSuffixes = normalizeSuffixes(current.sufijos);
+      const currentSuffixes = normalizeFormSuffixes(current.sufijos);
       const used = currentSuffixes.map((item) => item.sufijo);
       const nextSuffix = suffixOptions.find((option) => !used.includes(option));
       if (!nextSuffix) return current;
       return {
         ...current,
-        sufijos: [...currentSuffixes, { sufijo: nextSuffix, capacidad: 1 }],
+        sufijos: [...currentSuffixes, { sufijo: nextSuffix, capacidad: '' }],
       };
     });
   }
 
   function removeSuffix(index) {
     setForm((current) => {
-      const currentSuffixes = normalizeSuffixes(current.sufijos);
+      const currentSuffixes = normalizeFormSuffixes(current.sufijos);
       if (currentSuffixes.length === 1) return current;
       return { ...current, sufijos: currentSuffixes.filter((_, itemIndex) => itemIndex !== index) };
     });
@@ -569,13 +584,13 @@ function ArticleManager({ warehouse, refreshKey }) {
                 SKU
                 <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} required />
               </label>
-              <button className="secondary-button suffix-add" type="button" onClick={addSuffix} disabled={normalizeSuffixes(form.sufijos).length >= suffixOptions.length}>
+              <button className="secondary-button suffix-add" type="button" onClick={addSuffix} disabled={normalizeFormSuffixes(form.sufijos).length >= suffixOptions.length}>
                 <Plus size={17} />
                 Sufijo
               </button>
             </div>
             <div className="suffix-list">
-              {normalizeSuffixes(form.sufijos).map((suffix, index) => (
+              {normalizeFormSuffixes(form.sufijos).map((suffix, index) => (
                 <div className="suffix-row" key={`${suffix.sufijo}-${index}`}>
                   <div className="suffix-fixed">
                     <span>Sufijo</span>
@@ -584,11 +599,12 @@ function ArticleManager({ warehouse, refreshKey }) {
                   <label>
                     Capacidad
                     <input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={suffix.capacidad}
                       onFocus={(event) => event.target.select()}
-                      onChange={(event) => updateSuffix(index, 'capacidad', event.target.value)}
+                      onChange={(event) => updateSuffix(index, 'capacidad', event.target.value.replace(/\D/g, ''))}
                       required
                     />
                   </label>
@@ -597,7 +613,7 @@ function ArticleManager({ warehouse, refreshKey }) {
                     type="button"
                     onClick={() => removeSuffix(index)}
                     aria-label="Quitar sufijo"
-                    disabled={normalizeSuffixes(form.sufijos).length === 1}
+                    disabled={normalizeFormSuffixes(form.sufijos).length === 1}
                   >
                     <X size={17} />
                   </button>
@@ -885,6 +901,7 @@ function OperatorsManager({ warehouse }) {
 function ShelvingManager({ warehouse }) {
   const [modules, setModules] = useState([]);
   const [shelves, setShelves] = useState({});
+  const [selectedModuleIds, setSelectedModuleIds] = useState([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -930,6 +947,7 @@ function ShelvingManager({ warehouse }) {
     }
 
     setModules(currentModules);
+    setSelectedModuleIds((current) => current.filter((id) => currentModules.some((module) => module.id === id)));
     setShelves(
       (shelfData || []).reduce((acc, shelf) => {
         acc[`${shelf.modulo_id}-${shelf.numero}`] = shelf.cantidad_baldas;
@@ -949,15 +967,53 @@ function ShelvingManager({ warehouse }) {
     else loadLayout();
   }
 
+  async function normalizeModuleOrder() {
+    const { data, error: loadError } = await supabase
+      .from('almacen_modulos')
+      .select('*')
+      .eq('almacen_id', warehouse.id)
+      .order('orden', { ascending: true });
+
+    if (loadError) {
+      setError(loadError.message);
+      return false;
+    }
+
+    for (const [index, module] of (data || []).entries()) {
+      const { error: updateError } = await supabase
+        .from('almacen_modulos')
+        .update({ nombre: `Módulo ${index + 1}`, orden: index + 1 })
+        .eq('id', module.id);
+
+      if (updateError) {
+        setError(updateError.message);
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  function toggleModule(id) {
+    setSelectedModuleIds((current) => (
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    ));
+  }
+
   async function removeModule() {
-    if (modules.length <= 1) return;
-    const module = modules[modules.length - 1];
-    if (!window.confirm(`Quitar ${module.nombre || `Módulo ${modules.length}`}? Se perderá su configuración de estantes.`)) return;
-    const { error: deleteError } = await supabase.from('almacen_modulos').delete().eq('id', module.id);
+    if (!selectedModuleIds.length) return;
+    if (selectedModuleIds.length >= modules.length) {
+      setError('Debe quedar al menos un módulo configurado.');
+      return;
+    }
+    if (!window.confirm(`Quitar ${selectedModuleIds.length} módulos seleccionados? Se perderá su configuración de estantes.`)) return;
+    const { error: deleteError } = await supabase.from('almacen_modulos').delete().in('id', selectedModuleIds);
     if (deleteError) {
       setError(deleteError.message);
       return;
     }
+    setSelectedModuleIds([]);
+    await normalizeModuleOrder();
     loadLayout();
   }
 
@@ -993,7 +1049,7 @@ function ShelvingManager({ warehouse }) {
             <Plus size={18} />
             Añadir módulo
           </button>
-          <button className="secondary-button danger-text" type="button" onClick={removeModule} disabled={modules.length <= 1}>
+          <button className="secondary-button danger-text" type="button" onClick={removeModule} disabled={!selectedModuleIds.length || modules.length <= 1}>
             <Trash2 size={18} />
             Quitar módulo
           </button>
@@ -1005,9 +1061,11 @@ function ShelvingManager({ warehouse }) {
       <div className="rack-grid">
         {modules.map((module, moduleIndex) => (
           <article className="rack-card" key={module.id}>
+            <button className="module-check" type="button" onClick={() => toggleModule(module.id)} aria-label={`Seleccionar Módulo ${moduleIndex + 1}`}>
+              {selectedModuleIds.includes(module.id) && <span />}
+            </button>
             <div className="rack-title">
               <strong>Módulo {moduleIndex + 1}</strong>
-              <span>Configura cuántas baldas usará cada estante</span>
             </div>
             <div className="rack-frame">
               {Array.from({ length: 8 }, (_, index) => {
@@ -1079,21 +1137,6 @@ function WarehouseWorkspace({ warehouse }) {
 
   return (
     <>
-      <section className="warehouse-summary">
-        <article>
-          <span>Base activa</span>
-          <strong>{warehouse.nombre}</strong>
-        </article>
-        <article>
-          <span>Ubicación</span>
-          <strong>{warehouse.ubicacion}</strong>
-        </article>
-        <article>
-          <span>Trabajo actual</span>
-          <strong>{tab === 'articulos' ? 'Artículos' : tab === 'usuarios' ? 'Usuarios' : 'Estantería'}</strong>
-        </article>
-      </section>
-
       <nav className="tabs">
         <button className={tab === 'articulos' ? 'active' : ''} onClick={() => setTab('articulos')}>
           <PackagePlus size={17} />
