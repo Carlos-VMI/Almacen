@@ -1,10 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft,
   Boxes,
   Building2,
   Database,
+  FileSpreadsheet,
   LayoutGrid,
   LogOut,
   PackagePlus,
@@ -17,6 +18,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import './styles.css';
 
@@ -57,6 +59,73 @@ function cloneEmptyArticle() {
   return { ...emptyArticle, sufijos: normalizeSuffixes(emptyArticle.sufijos) };
 }
 
+function normalizeImportKey(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function readImportCell(row, names) {
+  const normalizedRow = Object.entries(row).reduce((acc, [key, value]) => {
+    acc[normalizeImportKey(key)] = value;
+    return acc;
+  }, {});
+
+  for (const name of names) {
+    const value = normalizedRow[normalizeImportKey(name)];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+
+  return '';
+}
+
+function buildImportRecords(rows, warehouseId) {
+  const grouped = new Map();
+
+  rows.forEach((row) => {
+    const codigoArticulo = readImportCell(row, ['codigo_articulo', 'codigo articulo', 'código artículo']);
+    const codigoCliente = readImportCell(row, ['codigo_cliente', 'codigo cliente', 'código cliente']);
+    const descripcion = readImportCell(row, ['descripcion', 'descripción']);
+    const sku = readImportCell(row, ['sku']);
+    const suffix = readImportCell(row, ['sufijo']) || '01';
+    const capacidad = readImportCell(row, ['capacidad', 'cantidad']);
+
+    if (!codigoArticulo || !descripcion || !sku) return;
+
+    const key = sku;
+    const current = grouped.get(key) || {
+      almacen_id: warehouseId,
+      codigo_articulo: codigoArticulo,
+      codigo_cliente: codigoCliente,
+      descripcion,
+      sku,
+      sufijos: [],
+    };
+
+    const normalizedSuffix = suffixOptions.includes(String(suffix).padStart(2, '0'))
+      ? String(suffix).padStart(2, '0')
+      : suffixOptions[Math.min(current.sufijos.length, suffixOptions.length - 1)];
+
+    if (!current.sufijos.some((item) => item.sufijo === normalizedSuffix)) {
+      current.sufijos.push({
+        sufijo: normalizedSuffix,
+        capacidad: Math.max(0, toNumber(capacidad, 0)),
+      });
+    }
+
+    grouped.set(key, current);
+  });
+
+  return Array.from(grouped.values()).map((record) => ({
+    ...record,
+    sufijos: normalizeSuffixes(record.sufijos),
+  }));
+}
+
 function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -86,11 +155,12 @@ function Login({ onLogin }) {
   return (
     <main className="login-shell">
       <section className="login-panel">
-        <div className="brand-mark">
-          <Boxes size={30} />
+        <div className="login-welcome">
+          <div className="brand-mark">
+            <Boxes size={30} />
+          </div>
+          <h1>Bienvenidos</h1>
         </div>
-        <h1>Almacén</h1>
-        <p>Acceso privado para configurar bases, estanterías, artículos y usuarios.</p>
 
         <form onSubmit={handleSubmit} className="login-form">
           <label>
@@ -161,13 +231,46 @@ function Topbar({ session, selectedWarehouse, onBack }) {
   );
 }
 
-function WarehouseList({ warehouses, onCreate, onOpen, onDelete, loading, error }) {
+function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDeleteSelected, loading, error }) {
   const [form, setForm] = useState(emptyWarehouse);
+  const [editing, setEditing] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
 
   async function submit(event) {
     event.preventDefault();
-    await onCreate(form);
+    if (editing) {
+      await onUpdate(editing.id, form);
+      setEditing(null);
+    } else {
+      await onCreate(form);
+    }
     setForm(emptyWarehouse);
+  }
+
+  function startEdit(warehouse) {
+    setEditing(warehouse);
+    setForm({
+      nombre: warehouse.nombre || '',
+      ubicacion: warehouse.ubicacion || '',
+      descripcion: warehouse.descripcion || '',
+    });
+  }
+
+  function cancelEdit() {
+    setEditing(null);
+    setForm(emptyWarehouse);
+  }
+
+  function toggleWarehouse(id) {
+    setSelectedIds((current) => (
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    ));
+  }
+
+  async function deleteSelectedWarehouses() {
+    if (!selectedIds.length) return;
+    await onDeleteSelected(selectedIds);
+    setSelectedIds([]);
   }
 
   return (
@@ -176,9 +279,15 @@ function WarehouseList({ warehouses, onCreate, onOpen, onDelete, loading, error 
         <div className="panel-heading">
           <div>
             <span className="eyebrow">Nueva base</span>
-            <h2>Crear almacén</h2>
+            <h2>{editing ? 'Editar almacén' : 'Crear almacén'}</h2>
           </div>
-          <Database size={22} />
+          {editing ? (
+            <button className="icon-button" type="button" onClick={cancelEdit} aria-label="Cancelar edición">
+              <X size={18} />
+            </button>
+          ) : (
+            <Database size={22} />
+          )}
         </div>
 
         <form className="stack-form" onSubmit={submit}>
@@ -209,8 +318,8 @@ function WarehouseList({ warehouses, onCreate, onOpen, onDelete, loading, error 
             />
           </label>
           <button className="primary-button" type="submit">
-            <Plus size={18} />
-            Crear base
+            {editing ? <Save size={18} /> : <Plus size={18} />}
+            {editing ? 'Guardar base' : 'Crear base'}
           </button>
         </form>
       </section>
@@ -228,44 +337,55 @@ function WarehouseList({ warehouses, onCreate, onOpen, onDelete, loading, error 
         {loading ? (
           <div className="loading-box">Cargando bases...</div>
         ) : (
-          <div className="warehouse-grid">
-            {warehouses.map((warehouse) => (
-              <article className="warehouse-card" key={warehouse.id}>
-                <button className="warehouse-open" type="button" onClick={() => onOpen(warehouse)}>
-                  <div className="warehouse-icon">
-                    <Building2 size={26} />
+          <>
+            <div className="icon-toolbar">
+              <span>{selectedIds.length ? `${selectedIds.length} seleccionadas` : ''}</span>
+              <button className="icon-button danger" type="button" onClick={deleteSelectedWarehouses} disabled={!selectedIds.length} aria-label="Eliminar bases seleccionadas">
+                <Trash2 size={17} />
+              </button>
+            </div>
+            <div className="warehouse-grid">
+              {warehouses.map((warehouse) => (
+                <article className="warehouse-card" key={warehouse.id}>
+                  <button className="warehouse-check" type="button" onClick={() => toggleWarehouse(warehouse.id)} aria-label={`Seleccionar ${warehouse.nombre}`}>
+                    {selectedIds.includes(warehouse.id) && <span />}
+                  </button>
+                  <button className="warehouse-open" type="button" onClick={() => onOpen(warehouse)}>
+                    <div className="warehouse-icon">
+                      <Building2 size={26} />
+                    </div>
+                    <div>
+                      <strong>{warehouse.nombre}</strong>
+                      <span>{warehouse.ubicacion}</span>
+                      {warehouse.descripcion && <small>{warehouse.descripcion}</small>}
+                    </div>
+                  </button>
+                  <div className="warehouse-actions">
+                    <button className="icon-button" type="button" onClick={() => startEdit(warehouse)} aria-label={`Editar ${warehouse.nombre}`}>
+                      <Pencil size={17} />
+                    </button>
+                    <button className="icon-button danger" type="button" onClick={() => onDelete(warehouse)} aria-label={`Eliminar ${warehouse.nombre}`}>
+                      <Trash2 size={17} />
+                    </button>
                   </div>
-                  <div>
-                    <strong>{warehouse.nombre}</strong>
-                    <span>{warehouse.ubicacion}</span>
-                    {warehouse.descripcion && <small>{warehouse.descripcion}</small>}
-                  </div>
-                </button>
-                <button
-                  className="icon-button danger warehouse-delete"
-                  type="button"
-                  onClick={() => onDelete(warehouse)}
-                  aria-label={`Eliminar ${warehouse.nombre}`}
-                >
-                  <Trash2 size={17} />
-                </button>
-              </article>
-            ))}
-            {!warehouses.length && (
-              <div className="empty-state compact">
-                <Database size={30} />
-                <h2>No hay bases creadas</h2>
-                <p>Crea la primera base para empezar a configurar artículos y estanterías.</p>
-              </div>
-            )}
-          </div>
+                </article>
+              ))}
+              {!warehouses.length && (
+                <div className="empty-state compact">
+                  <Database size={30} />
+                  <h2>No hay bases creadas</h2>
+                  <p>Crea la primera base para empezar a configurar artículos y estanterías.</p>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </section>
     </div>
   );
 }
 
-function ArticleManager({ warehouse }) {
+function ArticleManager({ warehouse, refreshKey }) {
   const [articles, setArticles] = useState([]);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(cloneEmptyArticle);
@@ -276,7 +396,7 @@ function ArticleManager({ warehouse }) {
 
   useEffect(() => {
     loadArticles();
-  }, [warehouse.id]);
+  }, [warehouse.id, refreshKey]);
 
   useEffect(() => {
     setForm(selected ? { ...selected, sufijos: normalizeSuffixes(selected.sufijos) } : cloneEmptyArticle());
@@ -456,20 +576,17 @@ function ArticleManager({ warehouse }) {
             <div className="suffix-list">
               {normalizeSuffixes(form.sufijos).map((suffix, index) => (
                 <div className="suffix-row" key={`${suffix.sufijo}-${index}`}>
-                  <label>
-                    Sufijo
-                    <select value={suffix.sufijo} onChange={(event) => updateSuffix(index, 'sufijo', event.target.value)}>
-                      {suffixOptions.map((option) => (
-                        <option value={option} key={option}>{option}</option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="suffix-fixed">
+                    <span>Sufijo</span>
+                    <strong>{suffix.sufijo}</strong>
+                  </div>
                   <label>
                     Capacidad
                     <input
                       type="number"
                       min="0"
                       value={suffix.capacidad}
+                      onFocus={(event) => event.target.select()}
                       onChange={(event) => updateSuffix(index, 'capacidad', event.target.value)}
                       required
                     />
@@ -510,9 +627,8 @@ function ArticleManager({ warehouse }) {
           <div className="table-panel">
             <div className="bulk-bar">
               <span>{selectedIds.length ? `${selectedIds.length} seleccionados` : 'Selecciona artículos para borrar varios'}</span>
-              <button className="secondary-button danger-text" type="button" onClick={deleteSelectedArticles} disabled={!selectedIds.length}>
+              <button className="icon-button danger" type="button" onClick={deleteSelectedArticles} disabled={!selectedIds.length} aria-label="Eliminar artículos seleccionados">
                 <Trash2 size={17} />
-                Eliminar seleccionados
               </button>
             </div>
             <table>
@@ -529,8 +645,9 @@ function ArticleManager({ warehouse }) {
                   <th>Código artículo</th>
                   <th>Código cliente</th>
                   <th>Descripción</th>
-                  <th>SKU + sufijos</th>
-                  <th>Capacidad total</th>
+                  <th>SKU + sufijo</th>
+                  <th>Capacidad</th>
+                  <th>Total</th>
                   <th></th>
                 </tr>
               </thead>
@@ -549,18 +666,22 @@ function ArticleManager({ warehouse }) {
                     <td>{article.codigo_cliente || '-'}</td>
                     <td>{article.descripcion}</td>
                     <td>
-                      <div className="sku-list">
+                      <div className="sku-lines">
                         {normalizeSuffixes(article.sufijos).map((suffix, index) => (
-                          <span className="sku-pill" key={`${article.id}-${suffix.sufijo}-${index}`}>
-                            {article.sku}-{suffix.sufijo}: {suffix.capacidad}
-                          </span>
+                          <span key={`${article.id}-${suffix.sufijo}-${index}`}>{article.sku}-{suffix.sufijo}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="capacity-lines">
+                        {normalizeSuffixes(article.sufijos).map((suffix, index) => (
+                          <span key={`${article.id}-cap-${suffix.sufijo}-${index}`}>{suffix.capacidad}</span>
                         ))}
                       </div>
                     </td>
                     <td><strong>{normalizeSuffixes(article.sufijos).reduce((sum, suffix) => sum + toNumber(suffix.capacidad, 0), 0)}</strong></td>
                     <td className="row-actions">
                       <button className="icon-button" type="button" onClick={() => setSelected(article)} aria-label="Editar"><Pencil size={17} /></button>
-                      <button className="icon-button danger" type="button" onClick={() => deleteArticle(article)} aria-label="Eliminar"><Trash2 size={17} /></button>
                     </td>
                   </tr>
                 ))}
@@ -915,6 +1036,39 @@ function ShelvingManager({ warehouse }) {
 
 function WarehouseWorkspace({ warehouse }) {
   const [tab, setTab] = useState('articulos');
+  const [importStatus, setImportStatus] = useState('');
+  const [articleRefreshKey, setArticleRefreshKey] = useState(0);
+  const fileInputRef = useRef(null);
+
+  async function importArticles(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setImportStatus('Importando...');
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+    const records = buildImportRecords(rows, warehouse.id);
+
+    if (!records.length) {
+      setImportStatus('El Excel no tiene artículos válidos.');
+      return;
+    }
+
+    const { error: importError } = await supabase
+      .from('almacen_articulos')
+      .upsert(records, { onConflict: 'almacen_id,sku' });
+
+    if (importError) {
+      setImportStatus(importError.message);
+      return;
+    }
+
+    setImportStatus(`${records.length} artículos importados.`);
+    setArticleRefreshKey((current) => current + 1);
+    setTab('articulos');
+  }
 
   return (
     <>
@@ -946,9 +1100,22 @@ function WarehouseWorkspace({ warehouse }) {
           <LayoutGrid size={17} />
           Configuración estantería
         </button>
+        <button className="import-tab" type="button" onClick={() => fileInputRef.current?.click()}>
+          <FileSpreadsheet size={17} />
+          Importar
+        </button>
+        <input
+          ref={fileInputRef}
+          className="hidden-file"
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          onChange={importArticles}
+        />
       </nav>
 
-      {tab === 'articulos' && <ArticleManager warehouse={warehouse} />}
+      {importStatus && <div className="import-status">{importStatus}</div>}
+
+      {tab === 'articulos' && <ArticleManager warehouse={warehouse} refreshKey={articleRefreshKey} />}
       {tab === 'usuarios' && <OperatorsManager warehouse={warehouse} />}
       {tab === 'estanteria' && <ShelvingManager warehouse={warehouse} />}
     </>
@@ -997,6 +1164,21 @@ function Dashboard({ session }) {
     loadWarehouses();
   }
 
+  async function updateWarehouse(id, form) {
+    const { error: updateError } = await supabase.from('almacen_bases').update({
+      nombre: form.nombre.trim(),
+      ubicacion: form.ubicacion.trim(),
+      descripcion: form.descripcion.trim(),
+    }).eq('id', id);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    loadWarehouses();
+  }
+
   async function deleteWarehouse(warehouse) {
     if (!window.confirm(`Eliminar la base "${warehouse.nombre}"? Se perderán todos sus datos: artículos, usuarios y configuración de estantería. Esta acción no se puede deshacer.`)) {
       return;
@@ -1009,6 +1191,24 @@ function Dashboard({ session }) {
     }
 
     if (selectedWarehouse?.id === warehouse.id) {
+      setSelectedWarehouse(null);
+    }
+    loadWarehouses();
+  }
+
+  async function deleteSelectedWarehouses(ids) {
+    if (!ids.length) return;
+    if (!window.confirm(`Eliminar ${ids.length} bases seleccionadas? Se perderán todos sus datos: artículos, usuarios y configuración de estantería. Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    const { error: deleteError } = await supabase.from('almacen_bases').delete().in('id', ids);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    if (selectedWarehouse && ids.includes(selectedWarehouse.id)) {
       setSelectedWarehouse(null);
     }
     loadWarehouses();
@@ -1028,8 +1228,10 @@ function Dashboard({ session }) {
         <WarehouseList
           warehouses={warehouses}
           onCreate={createWarehouse}
+          onUpdate={updateWarehouse}
           onOpen={setSelectedWarehouse}
           onDelete={deleteWarehouse}
+          onDeleteSelected={deleteSelectedWarehouses}
           loading={loading}
           error={error}
         />

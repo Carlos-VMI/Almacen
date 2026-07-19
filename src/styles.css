@@ -82,6 +82,13 @@ td {
   width: 100%;
 }
 
+.login-welcome {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
 .brand-mark {
   align-items: center;
   background: #0b74bd;
@@ -353,6 +360,7 @@ select:focus {
   justify-content: space-between;
   min-height: 126px;
   padding: 16px;
+  position: relative;
   text-align: left;
 }
 
@@ -380,8 +388,32 @@ select:focus {
   text-align: left;
 }
 
-.warehouse-delete {
+.warehouse-actions {
+  display: flex;
   flex: 0 0 auto;
+  gap: 8px;
+}
+
+.warehouse-check {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  display: flex;
+  flex: 0 0 auto;
+  height: 16px;
+  justify-content: center;
+  margin-top: 2px;
+  padding: 0;
+  width: 16px;
+}
+
+.warehouse-check span {
+  background: #0b74bd;
+  border-radius: 999px;
+  display: block;
+  height: 8px;
+  width: 8px;
 }
 
 .warehouse-card strong {
@@ -461,6 +493,25 @@ select:focus {
   color: #ffffff;
 }
 
+.tabs .import-tab {
+  margin-left: auto;
+}
+
+.hidden-file {
+  display: none;
+}
+
+.import-status {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  color: #1e40af;
+  font-size: 13px;
+  font-weight: 800;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
 .inventory-heading {
   margin-bottom: 16px;
 }
@@ -497,6 +548,20 @@ select:focus {
   gap: 12px;
   margin-bottom: 12px;
   padding: 10px;
+}
+
+.icon-toolbar {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.icon-toolbar span {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .bulk-bar span {
@@ -545,10 +610,35 @@ tr:last-child td {
   padding: 5px 9px;
 }
 
-.sku-list {
+.sku-list,
+.sku-lines,
+.capacity-lines {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.sku-lines,
+.capacity-lines {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.sku-lines span {
+  background: #dbeafe;
+  border-radius: 999px;
+  color: #1e40af;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 5px 9px;
+}
+
+.capacity-lines span {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.9;
 }
 
 .row-actions {
@@ -596,6 +686,28 @@ tr:last-child td {
   display: grid;
   gap: 10px;
   grid-template-columns: minmax(86px, 0.6fr) minmax(110px, 1fr) 38px;
+}
+
+.suffix-fixed {
+  display: grid;
+  gap: 7px;
+}
+
+.suffix-fixed span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.suffix-fixed strong {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  color: #0f172a;
+  display: flex;
+  min-height: 43px;
+  padding: 10px 12px;
 }
 
 .suffix-remove {
@@ -743,6 +855,10 @@ tr:last-child td {
 
   .search-box {
     max-width: none;
+  }
+
+  .tabs .import-tab {
+    margin-left: 0;
   }
 
   .rack-grid {
