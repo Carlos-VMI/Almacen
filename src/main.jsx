@@ -37,7 +37,7 @@ function toNumber(value, fallback = 0) {
 }
 
 function nextModuleName(count) {
-  return `Módulo ${String.fromCharCode(65 + count)}`;
+  return `Módulo ${count + 1}`;
 }
 
 function Login({ onLogin }) {
@@ -257,7 +257,7 @@ function ArticleManager({ warehouse }) {
   async function loadArticles() {
     setLoading(true);
     const { data, error: loadError } = await supabase
-      .from('articulos')
+      .from('almacen_articulos')
       .select('*')
       .eq('almacen_id', warehouse.id)
       .order('created_at', { ascending: false });
@@ -285,8 +285,8 @@ function ArticleManager({ warehouse }) {
     };
 
     const request = selected?.id
-      ? supabase.from('articulos').update(record).eq('id', selected.id)
-      : supabase.from('articulos').insert(record);
+      ? supabase.from('almacen_articulos').update(record).eq('id', selected.id)
+      : supabase.from('almacen_articulos').insert(record);
     const { error: saveError } = await request;
 
     if (saveError) {
@@ -301,7 +301,7 @@ function ArticleManager({ warehouse }) {
 
   async function deleteArticle(article) {
     if (!window.confirm(`Eliminar ${article.descripcion}?`)) return;
-    const { error: deleteError } = await supabase.from('articulos').delete().eq('id', article.id);
+    const { error: deleteError } = await supabase.from('almacen_articulos').delete().eq('id', article.id);
     if (deleteError) {
       setError(deleteError.message);
       return;
@@ -435,7 +435,7 @@ function OperatorsManager({ warehouse }) {
 
   async function loadOperators() {
     const { data, error: loadError } = await supabase
-      .from('operadores')
+      .from('almacen_operadores')
       .select('*')
       .eq('almacen_id', warehouse.id)
       .order('created_at', { ascending: false });
@@ -459,8 +459,8 @@ function OperatorsManager({ warehouse }) {
     };
 
     const request = selected?.id
-      ? supabase.from('operadores').update(record).eq('id', selected.id)
-      : supabase.from('operadores').insert(record);
+      ? supabase.from('almacen_operadores').update(record).eq('id', selected.id)
+      : supabase.from('almacen_operadores').insert(record);
     const { error: saveError } = await request;
 
     if (saveError) {
@@ -475,7 +475,7 @@ function OperatorsManager({ warehouse }) {
 
   async function deleteOperator(operator) {
     if (!window.confirm(`Eliminar usuario ${operator.nombre}?`)) return;
-    const { error: deleteError } = await supabase.from('operadores').delete().eq('id', operator.id);
+    const { error: deleteError } = await supabase.from('almacen_operadores').delete().eq('id', operator.id);
     if (deleteError) setError(deleteError.message);
     else loadOperators();
   }
@@ -576,7 +576,7 @@ function ShelvingManager({ warehouse }) {
 
   async function loadLayout() {
     const { data: moduleData, error: moduleError } = await supabase
-      .from('modulos_estanteria')
+      .from('almacen_modulos')
       .select('*')
       .eq('almacen_id', warehouse.id)
       .order('orden', { ascending: true });
@@ -589,8 +589,8 @@ function ShelvingManager({ warehouse }) {
     let currentModules = moduleData || [];
     if (!currentModules.length) {
       const { data: created, error: createError } = await supabase
-        .from('modulos_estanteria')
-        .insert({ almacen_id: warehouse.id, nombre: 'Módulo A', orden: 1 })
+        .from('almacen_modulos')
+        .insert({ almacen_id: warehouse.id, nombre: 'Módulo 1', orden: 1 })
         .select()
         .single();
       if (createError) {
@@ -602,7 +602,7 @@ function ShelvingManager({ warehouse }) {
 
     const moduleIds = currentModules.map((module) => module.id);
     const { data: shelfData, error: shelfError } = await supabase
-      .from('estantes_estanteria')
+      .from('almacen_estantes')
       .select('*')
       .in('modulo_id', moduleIds)
       .order('numero', { ascending: true });
@@ -623,7 +623,7 @@ function ShelvingManager({ warehouse }) {
   }
 
   async function addModule() {
-    const { error: createError } = await supabase.from('modulos_estanteria').insert({
+    const { error: createError } = await supabase.from('almacen_modulos').insert({
       almacen_id: warehouse.id,
       nombre: nextModuleName(modules.length),
       orden: modules.length + 1,
@@ -634,12 +634,12 @@ function ShelvingManager({ warehouse }) {
 
   async function saveShelf(moduleId, numero, cantidad) {
     const { error: saveError } = await supabase
-      .from('estantes_estanteria')
+      .from('almacen_estantes')
       .upsert(
         {
           modulo_id: moduleId,
           numero,
-          cantidad_baldas: Math.max(0, toNumber(cantidad, 0)),
+          cantidad_baldas: Math.min(8, Math.max(0, toNumber(cantidad, 0))),
         },
         { onConflict: 'modulo_id,numero' }
       );
@@ -649,7 +649,7 @@ function ShelvingManager({ warehouse }) {
       return;
     }
 
-    setShelves((current) => ({ ...current, [`${moduleId}-${numero}`]: Math.max(0, toNumber(cantidad, 0)) }));
+    setShelves((current) => ({ ...current, [`${moduleId}-${numero}`]: Math.min(8, Math.max(0, toNumber(cantidad, 0))) }));
   }
 
   return (
@@ -668,29 +668,30 @@ function ShelvingManager({ warehouse }) {
       {error && <div className="error-box">{error}</div>}
 
       <div className="rack-grid">
-        {modules.map((module) => (
+        {modules.map((module, moduleIndex) => (
           <article className="rack-card" key={module.id}>
             <div className="rack-title">
-              <strong>{module.nombre}</strong>
+              <strong>Módulo {moduleIndex + 1}</strong>
               <span>Configura cuántas baldas usará cada estante</span>
             </div>
             <div className="rack-frame">
-              {Array.from({ length: 10 }, (_, index) => {
+              {Array.from({ length: 8 }, (_, index) => {
                 const numero = index + 1;
                 const key = `${module.id}-${numero}`;
-                const value = shelves[key] ?? 0;
+                const value = Math.min(8, Math.max(0, shelves[key] ?? 0));
                 return (
                   <div className="rack-row" key={key}>
                     <span>E{numero}</span>
                     <input
                       type="number"
                       min="0"
+                      max="8"
                       value={value}
                       onChange={(event) => saveShelf(module.id, numero, event.target.value)}
                       aria-label={`Baldas estante ${numero}`}
                     />
-                    <div className="shelf-preview">
-                      {Array.from({ length: Math.min(value, 12) }, (_, shelfIndex) => (
+                    <div className="shelf-preview" style={{ gridTemplateColumns: `repeat(${Math.max(value, 1)}, minmax(0, 1fr))` }}>
+                      {Array.from({ length: value }, (_, shelfIndex) => (
                         <i key={shelfIndex} />
                       ))}
                     </div>
@@ -760,7 +761,7 @@ function Dashboard({ session }) {
   async function loadWarehouses() {
     setLoading(true);
     const { data, error: loadError } = await supabase
-      .from('almacenes')
+      .from('almacen_bases')
       .select('*')
       .order('created_at', { ascending: false });
     setLoading(false);
@@ -775,7 +776,7 @@ function Dashboard({ session }) {
   }
 
   async function createWarehouse(form) {
-    const { error: createError } = await supabase.from('almacenes').insert({
+    const { error: createError } = await supabase.from('almacen_bases').insert({
       nombre: form.nombre.trim(),
       ubicacion: form.ubicacion.trim(),
       descripcion: form.descripcion.trim(),
