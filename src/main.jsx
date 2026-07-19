@@ -26,10 +26,10 @@ const emptyArticle = {
   codigo_cliente: '',
   sku: '',
   descripcion: '',
-  cantidad_baldas: 1,
-  capacidad_balda: 1,
+  sufijos: [{ sufijo: '01', capacidad: 1 }],
 };
 const emptyOperator = { nombre: '', email: '', rol: 'operador', pin: '', activo: true };
+const suffixOptions = ['01', '02', '03', '04'];
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -38,6 +38,23 @@ function toNumber(value, fallback = 0) {
 
 function nextModuleName(count) {
   return `Módulo ${count + 1}`;
+}
+
+function normalizeSuffixes(value) {
+  if (Array.isArray(value) && value.length) {
+    return value.map((item, index) => ({
+      sufijo: suffixOptions.includes(String(item.sufijo).padStart(2, '0'))
+        ? String(item.sufijo).padStart(2, '0')
+        : suffixOptions[Math.min(index, suffixOptions.length - 1)],
+      capacidad: Math.max(0, toNumber(item.capacidad ?? item.cantidad, 0)),
+    }));
+  }
+
+  return [{ sufijo: '01', capacidad: 1 }];
+}
+
+function cloneEmptyArticle() {
+  return { ...emptyArticle, sufijos: normalizeSuffixes(emptyArticle.sufijos) };
 }
 
 function Login({ onLogin }) {
@@ -144,7 +161,7 @@ function Topbar({ session, selectedWarehouse, onBack }) {
   );
 }
 
-function WarehouseList({ warehouses, onCreate, onOpen, loading, error }) {
+function WarehouseList({ warehouses, onCreate, onOpen, onDelete, loading, error }) {
   const [form, setForm] = useState(emptyWarehouse);
 
   async function submit(event) {
@@ -213,16 +230,26 @@ function WarehouseList({ warehouses, onCreate, onOpen, loading, error }) {
         ) : (
           <div className="warehouse-grid">
             {warehouses.map((warehouse) => (
-              <button className="warehouse-card" key={warehouse.id} onClick={() => onOpen(warehouse)}>
-                <div className="warehouse-icon">
-                  <Building2 size={26} />
-                </div>
-                <div>
-                  <strong>{warehouse.nombre}</strong>
-                  <span>{warehouse.ubicacion}</span>
-                  {warehouse.descripcion && <small>{warehouse.descripcion}</small>}
-                </div>
-              </button>
+              <article className="warehouse-card" key={warehouse.id}>
+                <button className="warehouse-open" type="button" onClick={() => onOpen(warehouse)}>
+                  <div className="warehouse-icon">
+                    <Building2 size={26} />
+                  </div>
+                  <div>
+                    <strong>{warehouse.nombre}</strong>
+                    <span>{warehouse.ubicacion}</span>
+                    {warehouse.descripcion && <small>{warehouse.descripcion}</small>}
+                  </div>
+                </button>
+                <button
+                  className="icon-button danger warehouse-delete"
+                  type="button"
+                  onClick={() => onDelete(warehouse)}
+                  aria-label={`Eliminar ${warehouse.nombre}`}
+                >
+                  <Trash2 size={17} />
+                </button>
+              </article>
             ))}
             {!warehouses.length && (
               <div className="empty-state compact">
@@ -241,7 +268,8 @@ function WarehouseList({ warehouses, onCreate, onOpen, loading, error }) {
 function ArticleManager({ warehouse }) {
   const [articles, setArticles] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [form, setForm] = useState(emptyArticle);
+  const [form, setForm] = useState(cloneEmptyArticle);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -251,7 +279,7 @@ function ArticleManager({ warehouse }) {
   }, [warehouse.id]);
 
   useEffect(() => {
-    setForm(selected || emptyArticle);
+    setForm(selected ? { ...selected, sufijos: normalizeSuffixes(selected.sufijos) } : cloneEmptyArticle());
   }, [selected]);
 
   async function loadArticles() {
@@ -274,14 +302,23 @@ function ArticleManager({ warehouse }) {
 
   async function saveArticle(event) {
     event.preventDefault();
+    const suffixes = normalizeSuffixes(form.sufijos);
+    const repeatedSuffix = suffixes.some((suffix, index) => (
+      suffixes.findIndex((item) => item.sufijo === suffix.sufijo) !== index
+    ));
+
+    if (repeatedSuffix) {
+      setError('No puedes repetir el mismo sufijo en un artículo.');
+      return;
+    }
+
     const record = {
       almacen_id: warehouse.id,
       codigo_articulo: form.codigo_articulo.trim(),
       codigo_cliente: form.codigo_cliente.trim(),
       sku: form.sku.trim(),
       descripcion: form.descripcion.trim(),
-      cantidad_baldas: Math.max(1, toNumber(form.cantidad_baldas, 1)),
-      capacidad_balda: Math.max(1, toNumber(form.capacidad_balda, 1)),
+      sufijos: suffixes,
     };
 
     const request = selected?.id
@@ -295,18 +332,76 @@ function ArticleManager({ warehouse }) {
     }
 
     setSelected(null);
-    setForm(emptyArticle);
+    setForm(cloneEmptyArticle());
     loadArticles();
   }
 
   async function deleteArticle(article) {
-    if (!window.confirm(`Eliminar ${article.descripcion}?`)) return;
+    if (!window.confirm(`Eliminar el artículo "${article.descripcion}"? Esta acción no se puede deshacer.`)) return;
     const { error: deleteError } = await supabase.from('almacen_articulos').delete().eq('id', article.id);
     if (deleteError) {
       setError(deleteError.message);
       return;
     }
     loadArticles();
+  }
+
+  async function deleteSelectedArticles() {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Eliminar ${selectedIds.length} artículos seleccionados? Esta acción no se puede deshacer.`)) return;
+    const { error: deleteError } = await supabase.from('almacen_articulos').delete().in('id', selectedIds);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    setSelectedIds([]);
+    setSelected(null);
+    loadArticles();
+  }
+
+  function toggleArticle(id) {
+    setSelectedIds((current) => (
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    ));
+  }
+
+  function toggleAllArticles() {
+    const visibleIds = filtered.map((article) => article.id);
+    setSelectedIds((current) => (
+      visibleIds.every((id) => current.includes(id))
+        ? current.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...current, ...visibleIds]))
+    ));
+  }
+
+  function updateSuffix(index, field, value) {
+    setForm((current) => ({
+      ...current,
+      sufijos: normalizeSuffixes(current.sufijos).map((item, itemIndex) => (
+        itemIndex === index ? { ...item, [field]: value } : item
+      )),
+    }));
+  }
+
+  function addSuffix() {
+    setForm((current) => {
+      const currentSuffixes = normalizeSuffixes(current.sufijos);
+      const used = currentSuffixes.map((item) => item.sufijo);
+      const nextSuffix = suffixOptions.find((option) => !used.includes(option));
+      if (!nextSuffix) return current;
+      return {
+        ...current,
+        sufijos: [...currentSuffixes, { sufijo: nextSuffix, capacidad: 1 }],
+      };
+    });
+  }
+
+  function removeSuffix(index) {
+    setForm((current) => {
+      const currentSuffixes = normalizeSuffixes(current.sufijos);
+      if (currentSuffixes.length === 1) return current;
+      return { ...current, sufijos: currentSuffixes.filter((_, itemIndex) => itemIndex !== index) };
+    });
   }
 
   const filtered = useMemo(() => {
@@ -343,22 +438,55 @@ function ArticleManager({ warehouse }) {
             Código de cliente
             <input value={form.codigo_cliente || ''} onChange={(event) => setForm({ ...form, codigo_cliente: event.target.value })} />
           </label>
-          <label>
-            SKU
-            <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} required />
-          </label>
           <label className="wide-field">
             Descripción
             <input value={form.descripcion} onChange={(event) => setForm({ ...form, descripcion: event.target.value })} required />
           </label>
-          <label>
-            Cantidad de baldas
-            <input type="number" min="1" value={form.cantidad_baldas} onChange={(event) => setForm({ ...form, cantidad_baldas: event.target.value })} required />
-          </label>
-          <label>
-            Capacidad por balda
-            <input type="number" min="1" value={form.capacidad_balda} onChange={(event) => setForm({ ...form, capacidad_balda: event.target.value })} required />
-          </label>
+          <div className="sku-suffix-panel">
+            <div className="suffix-head">
+              <label>
+                SKU
+                <input value={form.sku} onChange={(event) => setForm({ ...form, sku: event.target.value })} required />
+              </label>
+              <button className="secondary-button suffix-add" type="button" onClick={addSuffix} disabled={normalizeSuffixes(form.sufijos).length >= suffixOptions.length}>
+                <Plus size={17} />
+                Sufijo
+              </button>
+            </div>
+            <div className="suffix-list">
+              {normalizeSuffixes(form.sufijos).map((suffix, index) => (
+                <div className="suffix-row" key={`${suffix.sufijo}-${index}`}>
+                  <label>
+                    Sufijo
+                    <select value={suffix.sufijo} onChange={(event) => updateSuffix(index, 'sufijo', event.target.value)}>
+                      {suffixOptions.map((option) => (
+                        <option value={option} key={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Capacidad
+                    <input
+                      type="number"
+                      min="0"
+                      value={suffix.capacidad}
+                      onChange={(event) => updateSuffix(index, 'capacidad', event.target.value)}
+                      required
+                    />
+                  </label>
+                  <button
+                    className="icon-button danger suffix-remove"
+                    type="button"
+                    onClick={() => removeSuffix(index)}
+                    aria-label="Quitar sufijo"
+                    disabled={normalizeSuffixes(form.sufijos).length === 1}
+                  >
+                    <X size={17} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
           <button className="primary-button wide-field" type="submit">
             <Save size={18} />
             {selected ? 'Guardar cambios' : 'Crear artículo'}
@@ -380,32 +508,59 @@ function ArticleManager({ warehouse }) {
         {error && <div className="error-box">{error}</div>}
         {loading ? <div className="loading-box">Cargando artículos...</div> : (
           <div className="table-panel">
+            <div className="bulk-bar">
+              <span>{selectedIds.length ? `${selectedIds.length} seleccionados` : 'Selecciona artículos para borrar varios'}</span>
+              <button className="secondary-button danger-text" type="button" onClick={deleteSelectedArticles} disabled={!selectedIds.length}>
+                <Trash2 size={17} />
+                Eliminar seleccionados
+              </button>
+            </div>
             <table>
               <thead>
                 <tr>
+                  <th className="select-cell">
+                    <input
+                      type="checkbox"
+                      checked={filtered.length > 0 && filtered.every((article) => selectedIds.includes(article.id))}
+                      onChange={toggleAllArticles}
+                      aria-label="Seleccionar artículos visibles"
+                    />
+                  </th>
                   <th>Código artículo</th>
                   <th>Código cliente</th>
-                  <th>SKU</th>
                   <th>Descripción</th>
-                  <th>Baldas</th>
-                  <th>Capacidad/balda</th>
-                  <th>Total</th>
+                  <th>SKU + sufijos</th>
+                  <th>Capacidad total</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((article) => (
                   <tr key={article.id}>
+                    <td className="select-cell">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(article.id)}
+                        onChange={() => toggleArticle(article.id)}
+                        aria-label={`Seleccionar ${article.descripcion}`}
+                      />
+                    </td>
                     <td>{article.codigo_articulo}</td>
                     <td>{article.codigo_cliente || '-'}</td>
-                    <td><span className="sku-pill">{article.sku}</span></td>
                     <td>{article.descripcion}</td>
-                    <td>{article.cantidad_baldas}</td>
-                    <td>{article.capacidad_balda}</td>
-                    <td><strong>{article.cantidad_baldas * article.capacidad_balda}</strong></td>
+                    <td>
+                      <div className="sku-list">
+                        {normalizeSuffixes(article.sufijos).map((suffix, index) => (
+                          <span className="sku-pill" key={`${article.id}-${suffix.sufijo}-${index}`}>
+                            {article.sku}-{suffix.sufijo}: {suffix.capacidad}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td><strong>{normalizeSuffixes(article.sufijos).reduce((sum, suffix) => sum + toNumber(suffix.capacidad, 0), 0)}</strong></td>
                     <td className="row-actions">
-                      <button className="icon-button" onClick={() => setSelected(article)} aria-label="Editar"><Pencil size={17} /></button>
-                      <button className="icon-button danger" onClick={() => deleteArticle(article)} aria-label="Eliminar"><Trash2 size={17} /></button>
+                      <button className="icon-button" type="button" onClick={() => setSelected(article)} aria-label="Editar"><Pencil size={17} /></button>
+                      <button className="icon-button danger" type="button" onClick={() => deleteArticle(article)} aria-label="Eliminar"><Trash2 size={17} /></button>
                     </td>
                   </tr>
                 ))}
@@ -423,6 +578,7 @@ function OperatorsManager({ warehouse }) {
   const [operators, setOperators] = useState([]);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(emptyOperator);
+  const [selectedIds, setSelectedIds] = useState([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -474,10 +630,38 @@ function OperatorsManager({ warehouse }) {
   }
 
   async function deleteOperator(operator) {
-    if (!window.confirm(`Eliminar usuario ${operator.nombre}?`)) return;
+    if (!window.confirm(`Eliminar usuario "${operator.nombre}"? Esta acción no se puede deshacer.`)) return;
     const { error: deleteError } = await supabase.from('almacen_operadores').delete().eq('id', operator.id);
     if (deleteError) setError(deleteError.message);
     else loadOperators();
+  }
+
+  async function deleteSelectedOperators() {
+    if (!selectedIds.length) return;
+    if (!window.confirm(`Eliminar ${selectedIds.length} usuarios seleccionados? Esta acción no se puede deshacer.`)) return;
+    const { error: deleteError } = await supabase.from('almacen_operadores').delete().in('id', selectedIds);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    setSelectedIds([]);
+    setSelected(null);
+    loadOperators();
+  }
+
+  function toggleOperator(id) {
+    setSelectedIds((current) => (
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    ));
+  }
+
+  function toggleAllOperators() {
+    const visibleIds = operators.map((operator) => operator.id);
+    setSelectedIds((current) => (
+      visibleIds.every((id) => current.includes(id))
+        ? current.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...current, ...visibleIds]))
+    ));
   }
 
   return (
@@ -533,9 +717,24 @@ function OperatorsManager({ warehouse }) {
         </div>
         {error && <div className="error-box">{error}</div>}
         <div className="table-panel">
+          <div className="bulk-bar">
+            <span>{selectedIds.length ? `${selectedIds.length} seleccionados` : 'Selecciona usuarios para borrar varios'}</span>
+            <button className="secondary-button danger-text" type="button" onClick={deleteSelectedOperators} disabled={!selectedIds.length}>
+              <Trash2 size={17} />
+              Eliminar seleccionados
+            </button>
+          </div>
           <table>
             <thead>
               <tr>
+                <th className="select-cell">
+                  <input
+                    type="checkbox"
+                    checked={operators.length > 0 && operators.every((operator) => selectedIds.includes(operator.id))}
+                    onChange={toggleAllOperators}
+                    aria-label="Seleccionar usuarios"
+                  />
+                </th>
                 <th>Nombre</th>
                 <th>Email</th>
                 <th>Rol</th>
@@ -546,13 +745,21 @@ function OperatorsManager({ warehouse }) {
             <tbody>
               {operators.map((operator) => (
                 <tr key={operator.id}>
+                  <td className="select-cell">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(operator.id)}
+                      onChange={() => toggleOperator(operator.id)}
+                      aria-label={`Seleccionar ${operator.nombre}`}
+                    />
+                  </td>
                   <td>{operator.nombre}</td>
                   <td>{operator.email}</td>
                   <td>{operator.rol}</td>
                   <td>{operator.activo ? 'Activo' : 'Inactivo'}</td>
                   <td className="row-actions">
-                    <button className="icon-button" onClick={() => setSelected(operator)} aria-label="Editar"><Pencil size={17} /></button>
-                    <button className="icon-button danger" onClick={() => deleteOperator(operator)} aria-label="Eliminar"><Trash2 size={17} /></button>
+                    <button className="icon-button" type="button" onClick={() => setSelected(operator)} aria-label="Editar"><Pencil size={17} /></button>
+                    <button className="icon-button danger" type="button" onClick={() => deleteOperator(operator)} aria-label="Eliminar"><Trash2 size={17} /></button>
                   </td>
                 </tr>
               ))}
@@ -790,6 +997,23 @@ function Dashboard({ session }) {
     loadWarehouses();
   }
 
+  async function deleteWarehouse(warehouse) {
+    if (!window.confirm(`Eliminar la base "${warehouse.nombre}"? Se perderán todos sus datos: artículos, usuarios y configuración de estantería. Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    const { error: deleteError } = await supabase.from('almacen_bases').delete().eq('id', warehouse.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    if (selectedWarehouse?.id === warehouse.id) {
+      setSelectedWarehouse(null);
+    }
+    loadWarehouses();
+  }
+
   return (
     <main className="app-shell">
       <Topbar
@@ -805,6 +1029,7 @@ function Dashboard({ session }) {
           warehouses={warehouses}
           onCreate={createWarehouse}
           onOpen={setSelectedWarehouse}
+          onDelete={deleteWarehouse}
           loading={loading}
           error={error}
         />

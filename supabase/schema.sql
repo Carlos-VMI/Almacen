@@ -16,11 +16,15 @@ create table if not exists public.almacen_articulos (
   codigo_cliente text,
   sku text not null,
   descripcion text not null,
-  cantidad_baldas integer not null default 1 check (cantidad_baldas > 0),
-  capacidad_balda integer not null default 1 check (capacidad_balda > 0),
+  sufijos jsonb not null default '[{"sufijo":"01","capacidad":1}]'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.almacen_articulos
+  drop column if exists cantidad_baldas,
+  drop column if exists capacidad_balda,
+  add column if not exists sufijos jsonb not null default '[{"sufijo":"01","capacidad":1}]'::jsonb;
 
 create table if not exists public.almacen_operadores (
   id uuid primary key default gen_random_uuid(),
