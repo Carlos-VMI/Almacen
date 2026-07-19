@@ -359,7 +359,7 @@ select:focus {
   gap: 14px;
   justify-content: space-between;
   min-height: 126px;
-  padding: 16px;
+  padding: 16px 40px 16px 16px;
   position: relative;
   text-align: left;
 }
@@ -388,12 +388,6 @@ select:focus {
   text-align: left;
 }
 
-.warehouse-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
-}
-
 .warehouse-check {
   align-items: center;
   background: #ffffff;
@@ -403,9 +397,13 @@ select:focus {
   flex: 0 0 auto;
   height: 16px;
   justify-content: center;
-  margin-top: 2px;
+  margin-top: 0;
   padding: 0;
+  position: absolute;
+  right: 12px;
+  top: 12px;
   width: 16px;
+  z-index: 2;
 }
 
 .warehouse-check span {
@@ -514,6 +512,13 @@ select:focus {
 
 .inventory-heading {
   margin-bottom: 16px;
+}
+
+.heading-actions,
+.module-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
 }
 
 .search-box {
@@ -643,7 +648,7 @@ tr:last-child td {
 
 .row-actions {
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
 .select-cell {
@@ -652,8 +657,19 @@ tr:last-child td {
 }
 
 .select-cell input {
+  caret-color: transparent;
+  cursor: pointer !important;
   min-height: auto;
   width: 18px;
+}
+
+.action-cell {
+  text-align: center;
+  width: 58px;
+}
+
+.action-cell .icon-button {
+  margin: 0 auto;
 }
 
 .sku-suffix-panel {
@@ -783,7 +799,7 @@ tr:last-child td {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: 44px 66px minmax(0, 1fr);
+  grid-template-columns: 28px 44px minmax(0, 1fr);
 }
 
 .rack-row span {
@@ -794,7 +810,8 @@ tr:last-child td {
 
 .rack-row input {
   min-height: 34px;
-  padding: 6px 8px;
+  padding: 6px;
+  text-align: center;
 }
 
 .shelf-preview {
@@ -809,10 +826,17 @@ tr:last-child td {
 }
 
 .shelf-preview i {
+  align-items: center;
   background: #0b74bd;
   border-radius: 2px;
-  display: block;
+  color: rgba(255, 255, 255, 0.88);
+  display: flex;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
   height: 22px;
+  justify-content: center;
+  letter-spacing: 0;
   min-width: 0;
 }
 
@@ -831,6 +855,7 @@ tr:last-child td {
   .topbar,
   .user-area,
   .inventory-heading,
+  .module-actions,
   .tabs {
     align-items: stretch;
     flex-direction: column;

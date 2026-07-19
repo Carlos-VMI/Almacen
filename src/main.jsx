@@ -273,6 +273,12 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
     setSelectedIds([]);
   }
 
+  function editSelectedWarehouse() {
+    if (selectedIds.length !== 1) return;
+    const warehouse = warehouses.find((item) => item.id === selectedIds[0]);
+    if (warehouse) startEdit(warehouse);
+  }
+
   return (
     <div className="home-grid">
       <section className="form-panel">
@@ -328,7 +334,7 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
         <div className="panel-heading">
           <div>
             <span className="eyebrow">Disponibles</span>
-            <h2>Bases creadas</h2>
+            <h2>Base de datos creadas</h2>
           </div>
           <span className="counter-pill">{warehouses.length}</span>
         </div>
@@ -340,6 +346,9 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
           <>
             <div className="icon-toolbar">
               <span>{selectedIds.length ? `${selectedIds.length} seleccionadas` : ''}</span>
+              <button className="icon-button" type="button" onClick={editSelectedWarehouse} disabled={selectedIds.length !== 1} aria-label="Editar base seleccionada">
+                <Pencil size={17} />
+              </button>
               <button className="icon-button danger" type="button" onClick={deleteSelectedWarehouses} disabled={!selectedIds.length} aria-label="Eliminar bases seleccionadas">
                 <Trash2 size={17} />
               </button>
@@ -360,14 +369,6 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
                       {warehouse.descripcion && <small>{warehouse.descripcion}</small>}
                     </div>
                   </button>
-                  <div className="warehouse-actions">
-                    <button className="icon-button" type="button" onClick={() => startEdit(warehouse)} aria-label={`Editar ${warehouse.nombre}`}>
-                      <Pencil size={17} />
-                    </button>
-                    <button className="icon-button danger" type="button" onClick={() => onDelete(warehouse)} aria-label={`Eliminar ${warehouse.nombre}`}>
-                      <Trash2 size={17} />
-                    </button>
-                  </div>
                 </article>
               ))}
               {!warehouses.length && (
@@ -625,12 +626,6 @@ function ArticleManager({ warehouse, refreshKey }) {
         {error && <div className="error-box">{error}</div>}
         {loading ? <div className="loading-box">Cargando artículos...</div> : (
           <div className="table-panel">
-            <div className="bulk-bar">
-              <span>{selectedIds.length ? `${selectedIds.length} seleccionados` : 'Selecciona artículos para borrar varios'}</span>
-              <button className="icon-button danger" type="button" onClick={deleteSelectedArticles} disabled={!selectedIds.length} aria-label="Eliminar artículos seleccionados">
-                <Trash2 size={17} />
-              </button>
-            </div>
             <table>
               <thead>
                 <tr>
@@ -648,7 +643,11 @@ function ArticleManager({ warehouse, refreshKey }) {
                   <th>SKU + sufijo</th>
                   <th>Capacidad</th>
                   <th>Total</th>
-                  <th></th>
+                  <th className="action-cell">
+                    <button className="icon-button danger" type="button" onClick={deleteSelectedArticles} disabled={!selectedIds.length} aria-label="Eliminar artículos seleccionados">
+                      <Trash2 size={17} />
+                    </button>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -750,13 +749,6 @@ function OperatorsManager({ warehouse }) {
     loadOperators();
   }
 
-  async function deleteOperator(operator) {
-    if (!window.confirm(`Eliminar usuario "${operator.nombre}"? Esta acción no se puede deshacer.`)) return;
-    const { error: deleteError } = await supabase.from('almacen_operadores').delete().eq('id', operator.id);
-    if (deleteError) setError(deleteError.message);
-    else loadOperators();
-  }
-
   async function deleteSelectedOperators() {
     if (!selectedIds.length) return;
     if (!window.confirm(`Eliminar ${selectedIds.length} usuarios seleccionados? Esta acción no se puede deshacer.`)) return;
@@ -834,17 +826,15 @@ function OperatorsManager({ warehouse }) {
             <span className="eyebrow">Operación</span>
             <h2>Usuarios habilitados</h2>
           </div>
-          <span className="counter-pill">{operators.length}</span>
+          <div className="heading-actions">
+            <span className="counter-pill">{operators.length}</span>
+            <button className="icon-button danger" type="button" onClick={deleteSelectedOperators} disabled={!selectedIds.length} aria-label="Eliminar usuarios seleccionados">
+              <Trash2 size={17} />
+            </button>
+          </div>
         </div>
         {error && <div className="error-box">{error}</div>}
         <div className="table-panel">
-          <div className="bulk-bar">
-            <span>{selectedIds.length ? `${selectedIds.length} seleccionados` : 'Selecciona usuarios para borrar varios'}</span>
-            <button className="secondary-button danger-text" type="button" onClick={deleteSelectedOperators} disabled={!selectedIds.length}>
-              <Trash2 size={17} />
-              Eliminar seleccionados
-            </button>
-          </div>
           <table>
             <thead>
               <tr>
@@ -880,7 +870,6 @@ function OperatorsManager({ warehouse }) {
                   <td>{operator.activo ? 'Activo' : 'Inactivo'}</td>
                   <td className="row-actions">
                     <button className="icon-button" type="button" onClick={() => setSelected(operator)} aria-label="Editar"><Pencil size={17} /></button>
-                    <button className="icon-button danger" type="button" onClick={() => deleteOperator(operator)} aria-label="Eliminar"><Trash2 size={17} /></button>
                   </td>
                 </tr>
               ))}
@@ -960,6 +949,18 @@ function ShelvingManager({ warehouse }) {
     else loadLayout();
   }
 
+  async function removeModule() {
+    if (modules.length <= 1) return;
+    const module = modules[modules.length - 1];
+    if (!window.confirm(`Quitar ${module.nombre || `Módulo ${modules.length}`}? Se perderá su configuración de estantes.`)) return;
+    const { error: deleteError } = await supabase.from('almacen_modulos').delete().eq('id', module.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    loadLayout();
+  }
+
   async function saveShelf(moduleId, numero, cantidad) {
     const { error: saveError } = await supabase
       .from('almacen_estantes')
@@ -987,10 +988,16 @@ function ShelvingManager({ warehouse }) {
           <span className="eyebrow">Configuración de estantería</span>
           <h2>Layout de módulos y baldas</h2>
         </div>
-        <button className="primary-button" onClick={addModule}>
-          <Plus size={18} />
-          Añadir módulo
-        </button>
+        <div className="module-actions">
+          <button className="primary-button" type="button" onClick={addModule}>
+            <Plus size={18} />
+            Añadir módulo
+          </button>
+          <button className="secondary-button danger-text" type="button" onClick={removeModule} disabled={modules.length <= 1}>
+            <Trash2 size={18} />
+            Quitar módulo
+          </button>
+        </div>
       </div>
 
       {error && <div className="error-box">{error}</div>}
@@ -1020,7 +1027,7 @@ function ShelvingManager({ warehouse }) {
                     />
                     <div className="shelf-preview" style={{ gridTemplateColumns: `repeat(${Math.max(value, 1)}, minmax(0, 1fr))` }}>
                       {Array.from({ length: value }, (_, shelfIndex) => (
-                        <i key={shelfIndex} />
+                        <i key={shelfIndex}>C{shelfIndex + 1}</i>
                       ))}
                     </div>
                   </div>
