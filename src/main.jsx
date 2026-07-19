@@ -906,7 +906,7 @@ function ShelvingManager({ warehouse }) {
   const [modules, setModules] = useState([]);
   const [shelves, setShelves] = useState({});
   const [selectedModuleIds, setSelectedModuleIds] = useState([]);
-  const [editingLayout, setEditingLayout] = useState(false);
+  const [editingModuleIds, setEditingModuleIds] = useState([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -953,6 +953,7 @@ function ShelvingManager({ warehouse }) {
 
     setModules(currentModules);
     setSelectedModuleIds((current) => current.filter((id) => currentModules.some((module) => module.id === id)));
+    setEditingModuleIds((current) => current.filter((id) => currentModules.some((module) => module.id === id)));
     setShelves(
       (shelfData || []).reduce((acc, shelf) => {
         acc[`${shelf.modulo_id}-${shelf.numero}`] = shelf.cantidad_baldas;
@@ -963,7 +964,6 @@ function ShelvingManager({ warehouse }) {
   }
 
   async function addModule() {
-    if (!editingLayout) return;
     const { error: createError } = await supabase.from('almacen_modulos').insert({
       almacen_id: warehouse.id,
       nombre: nextModuleName(modules.length),
@@ -1001,14 +1001,12 @@ function ShelvingManager({ warehouse }) {
   }
 
   function toggleModule(id) {
-    if (!editingLayout) return;
     setSelectedModuleIds((current) => (
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
     ));
   }
 
   async function removeModule() {
-    if (!editingLayout) return;
     if (!selectedModuleIds.length) return;
     if (selectedModuleIds.length >= modules.length) {
       setError('Debe quedar al menos un módulo configurado.');
@@ -1021,12 +1019,13 @@ function ShelvingManager({ warehouse }) {
       return;
     }
     setSelectedModuleIds([]);
+    setEditingModuleIds((current) => current.filter((id) => !selectedModuleIds.includes(id)));
     await normalizeModuleOrder();
     loadLayout();
   }
 
   async function saveShelf(moduleId, numero, cantidad) {
-    if (!editingLayout) return;
+    if (!editingModuleIds.includes(moduleId)) return;
     const { error: saveError } = await supabase
       .from('almacen_estantes')
       .upsert(
@@ -1046,8 +1045,15 @@ function ShelvingManager({ warehouse }) {
     setShelves((current) => ({ ...current, [`${moduleId}-${numero}`]: Math.min(8, Math.max(0, toNumber(cantidad, 0))) }));
   }
 
-  function saveLayout() {
-    setEditingLayout(false);
+  function editSelectedModules() {
+    if (!selectedModuleIds.length) return;
+    setEditingModuleIds((current) => Array.from(new Set([...current, ...selectedModuleIds])));
+    setError('');
+  }
+
+  function saveSelectedModules() {
+    if (!selectedModuleIds.length) return;
+    setEditingModuleIds((current) => current.filter((id) => !selectedModuleIds.includes(id)));
     setSelectedModuleIds([]);
     setError('');
   }
@@ -1060,19 +1066,19 @@ function ShelvingManager({ warehouse }) {
           <h2>Layout de módulos y baldas</h2>
         </div>
         <div className="module-actions">
-          <button className="secondary-button" type="button" onClick={() => setEditingLayout(true)} disabled={editingLayout}>
+          <button className="secondary-button" type="button" onClick={editSelectedModules} disabled={!selectedModuleIds.length}>
             <Pencil size={18} />
             Editar
           </button>
-          <button className="primary-button" type="button" onClick={saveLayout} disabled={!editingLayout}>
+          <button className="primary-button" type="button" onClick={saveSelectedModules} disabled={!selectedModuleIds.some((id) => editingModuleIds.includes(id))}>
             <Save size={18} />
             Guardar
           </button>
-          <button className="primary-button" type="button" onClick={addModule} disabled={!editingLayout}>
+          <button className="primary-button" type="button" onClick={addModule}>
             <Plus size={18} />
             Añadir módulo
           </button>
-          <button className="secondary-button danger-text" type="button" onClick={removeModule} disabled={!editingLayout || !selectedModuleIds.length || modules.length <= 1}>
+          <button className="secondary-button danger-text" type="button" onClick={removeModule} disabled={!selectedModuleIds.length || modules.length <= 1}>
             <Trash2 size={18} />
             Quitar módulo
           </button>
@@ -1083,8 +1089,8 @@ function ShelvingManager({ warehouse }) {
 
       <div className="rack-grid">
         {modules.map((module, moduleIndex) => (
-          <article className={`rack-card ${editingLayout ? 'editing' : 'locked'}`} key={module.id}>
-            <button className="module-check" type="button" onClick={() => toggleModule(module.id)} disabled={!editingLayout} aria-label={`Seleccionar Módulo ${moduleIndex + 1}`}>
+          <article className={`rack-card ${editingModuleIds.includes(module.id) ? 'editing' : 'locked'}`} key={module.id}>
+            <button className="module-check" type="button" onClick={() => toggleModule(module.id)} aria-label={`Seleccionar Módulo ${moduleIndex + 1}`}>
               {selectedModuleIds.includes(module.id) && <span />}
             </button>
             <div className="rack-title">
@@ -1104,7 +1110,7 @@ function ShelvingManager({ warehouse }) {
                       max="8"
                       value={value}
                       onChange={(event) => saveShelf(module.id, numero, event.target.value)}
-                      disabled={!editingLayout}
+                      disabled={!editingModuleIds.includes(module.id)}
                       aria-label={`Baldas estante ${numero}`}
                     />
                     <div className="shelf-preview" style={{ gridTemplateColumns: `repeat(${Math.max(value, 1)}, minmax(0, 1fr))` }}>

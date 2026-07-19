@@ -404,10 +404,11 @@ select:focus {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 999px;
-  display: flex;
+  display: inline-flex;
   flex: 0 0 auto;
   height: 16px;
   justify-content: center;
+  line-height: 0;
   margin-top: 0;
   padding: 0;
   position: absolute;
@@ -415,6 +416,9 @@ select:focus {
   top: 12px;
   width: 16px;
   z-index: 2;
+  caret-color: transparent;
+  cursor: pointer !important;
+  user-select: none;
 }
 
 .warehouse-check span {
@@ -422,7 +426,11 @@ select:focus {
   border-radius: 999px;
   display: block;
   height: 8px;
+  margin: 0;
   width: 8px;
+  caret-color: transparent;
+  cursor: inherit !important;
+  user-select: none;
 }
 
 .warehouse-card strong {
@@ -824,9 +832,12 @@ tr:last-child td {
 }
 
 .rack-row span {
+  caret-color: transparent;
   color: #334155;
+  cursor: default !important;
   font-size: 12px;
   font-weight: 900;
+  user-select: none;
 }
 
 .rack-row input {
@@ -837,7 +848,11 @@ tr:last-child td {
 
 .rack-row input:disabled {
   background: #eef2f7;
+  caret-color: transparent;
   color: #475569;
+  cursor: default !important;
+  pointer-events: none;
+  user-select: none;
 }
 
 .module-check {
@@ -845,9 +860,10 @@ tr:last-child td {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 999px;
-  display: flex;
+  display: inline-flex;
   height: 16px;
   justify-content: center;
+  line-height: 0;
   padding: 0;
   position: absolute;
   right: 14px;
@@ -875,6 +891,7 @@ tr:last-child td {
   border-radius: 999px;
   display: block;
   height: 8px;
+  margin: 0;
   width: 8px;
 }
 
@@ -887,6 +904,15 @@ tr:last-child td {
   gap: 4px;
   min-height: 34px;
   padding: 5px;
+  caret-color: transparent;
+  cursor: default !important;
+  user-select: none;
+}
+
+.shelf-preview * {
+  caret-color: transparent;
+  cursor: default !important;
+  user-select: none;
 }
 
 .shelf-preview i {
@@ -905,6 +931,15 @@ tr:last-child td {
   caret-color: transparent;
   cursor: default !important;
   user-select: none;
+}
+
+.rack-card.locked .shelf-preview i {
+  background: #bfdbfe;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.rack-card.editing .shelf-preview i {
+  background: #0b74bd;
 }
 
 @media (max-width: 1050px) {
