@@ -1105,11 +1105,12 @@ function ShelvingManager({ warehouse }) {
                   <div className="rack-row" key={key}>
                     <span>E{numero}</span>
                     <input
-                      type="number"
-                      min="0"
-                      max="8"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-8]"
+                      maxLength={1}
                       value={value}
-                      onChange={(event) => saveShelf(module.id, numero, event.target.value)}
+                      onChange={(event) => saveShelf(module.id, numero, event.target.value.replace(/[^0-8]/g, '').slice(0, 1))}
                       disabled={!editingModuleIds.includes(module.id)}
                       aria-label={`Baldas estante ${numero}`}
                     />
