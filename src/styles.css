@@ -786,6 +786,10 @@ tr:last-child td {
   position: relative;
 }
 
+.rack-card.locked {
+  background: #fbfdff;
+}
+
 .rack-title {
   justify-content: space-between;
   gap: 12px;
@@ -831,6 +835,11 @@ tr:last-child td {
   text-align: center;
 }
 
+.rack-row input:disabled {
+  background: #eef2f7;
+  color: #475569;
+}
+
 .module-check {
   align-items: center;
   background: #ffffff;
@@ -845,6 +854,20 @@ tr:last-child td {
   top: 14px;
   width: 16px;
   z-index: 2;
+  caret-color: transparent;
+  cursor: pointer !important;
+  user-select: none;
+}
+
+.module-check:disabled {
+  cursor: default !important;
+  opacity: 0.75;
+}
+
+.module-check * {
+  caret-color: transparent;
+  cursor: inherit !important;
+  user-select: none;
 }
 
 .module-check span {
@@ -879,6 +902,9 @@ tr:last-child td {
   justify-content: center;
   letter-spacing: 0;
   min-width: 0;
+  caret-color: transparent;
+  cursor: default !important;
+  user-select: none;
 }
 
 @media (max-width: 1050px) {

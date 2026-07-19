@@ -30,7 +30,7 @@ const emptyArticle = {
   descripcion: '',
   sufijos: [{ sufijo: '01', capacidad: '' }],
 };
-const emptyOperator = { nombre: '', email: '', rol: 'operador', pin: '', activo: true };
+const emptyOperator = { nombre: '', email: '', rol: 'operario', pin: '', activo: true };
 const suffixOptions = ['01', '02', '03', '04'];
 
 function toNumber(value, fallback = 0) {
@@ -72,6 +72,10 @@ function normalizeFormSuffixes(value) {
 
 function cloneEmptyArticle() {
   return { ...emptyArticle, sufijos: normalizeFormSuffixes(emptyArticle.sufijos) };
+}
+
+function formatRole(value) {
+  return value === 'operador' ? 'operario' : value;
 }
 
 function normalizeImportKey(value) {
@@ -722,7 +726,7 @@ function OperatorsManager({ warehouse }) {
   }, [warehouse.id]);
 
   useEffect(() => {
-    setForm(selected || emptyOperator);
+    setForm(selected ? { ...selected, rol: formatRole(selected.rol) } : emptyOperator);
   }, [selected]);
 
   async function loadOperators() {
@@ -816,7 +820,7 @@ function OperatorsManager({ warehouse }) {
           <label>
             Rol
             <select value={form.rol} onChange={(event) => setForm({ ...form, rol: event.target.value })}>
-              <option value="operador">Operador</option>
+              <option value="operario">Operario</option>
               <option value="supervisor">Supervisor</option>
               <option value="admin">Admin</option>
             </select>
@@ -882,7 +886,7 @@ function OperatorsManager({ warehouse }) {
                   </td>
                   <td>{operator.nombre}</td>
                   <td>{operator.email}</td>
-                  <td>{operator.rol}</td>
+                  <td>{formatRole(operator.rol)}</td>
                   <td>{operator.activo ? 'Activo' : 'Inactivo'}</td>
                   <td className="row-actions">
                     <button className="icon-button" type="button" onClick={() => setSelected(operator)} aria-label="Editar"><Pencil size={17} /></button>
@@ -902,6 +906,7 @@ function ShelvingManager({ warehouse }) {
   const [modules, setModules] = useState([]);
   const [shelves, setShelves] = useState({});
   const [selectedModuleIds, setSelectedModuleIds] = useState([]);
+  const [editingLayout, setEditingLayout] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -958,6 +963,7 @@ function ShelvingManager({ warehouse }) {
   }
 
   async function addModule() {
+    if (!editingLayout) return;
     const { error: createError } = await supabase.from('almacen_modulos').insert({
       almacen_id: warehouse.id,
       nombre: nextModuleName(modules.length),
@@ -995,12 +1001,14 @@ function ShelvingManager({ warehouse }) {
   }
 
   function toggleModule(id) {
+    if (!editingLayout) return;
     setSelectedModuleIds((current) => (
       current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
     ));
   }
 
   async function removeModule() {
+    if (!editingLayout) return;
     if (!selectedModuleIds.length) return;
     if (selectedModuleIds.length >= modules.length) {
       setError('Debe quedar al menos un módulo configurado.');
@@ -1018,6 +1026,7 @@ function ShelvingManager({ warehouse }) {
   }
 
   async function saveShelf(moduleId, numero, cantidad) {
+    if (!editingLayout) return;
     const { error: saveError } = await supabase
       .from('almacen_estantes')
       .upsert(
@@ -1037,6 +1046,12 @@ function ShelvingManager({ warehouse }) {
     setShelves((current) => ({ ...current, [`${moduleId}-${numero}`]: Math.min(8, Math.max(0, toNumber(cantidad, 0))) }));
   }
 
+  function saveLayout() {
+    setEditingLayout(false);
+    setSelectedModuleIds([]);
+    setError('');
+  }
+
   return (
     <section className="inventory-panel">
       <div className="panel-heading inventory-heading">
@@ -1045,11 +1060,19 @@ function ShelvingManager({ warehouse }) {
           <h2>Layout de módulos y baldas</h2>
         </div>
         <div className="module-actions">
-          <button className="primary-button" type="button" onClick={addModule}>
+          <button className="secondary-button" type="button" onClick={() => setEditingLayout(true)} disabled={editingLayout}>
+            <Pencil size={18} />
+            Editar
+          </button>
+          <button className="primary-button" type="button" onClick={saveLayout} disabled={!editingLayout}>
+            <Save size={18} />
+            Guardar
+          </button>
+          <button className="primary-button" type="button" onClick={addModule} disabled={!editingLayout}>
             <Plus size={18} />
             Añadir módulo
           </button>
-          <button className="secondary-button danger-text" type="button" onClick={removeModule} disabled={!selectedModuleIds.length || modules.length <= 1}>
+          <button className="secondary-button danger-text" type="button" onClick={removeModule} disabled={!editingLayout || !selectedModuleIds.length || modules.length <= 1}>
             <Trash2 size={18} />
             Quitar módulo
           </button>
@@ -1060,8 +1083,8 @@ function ShelvingManager({ warehouse }) {
 
       <div className="rack-grid">
         {modules.map((module, moduleIndex) => (
-          <article className="rack-card" key={module.id}>
-            <button className="module-check" type="button" onClick={() => toggleModule(module.id)} aria-label={`Seleccionar Módulo ${moduleIndex + 1}`}>
+          <article className={`rack-card ${editingLayout ? 'editing' : 'locked'}`} key={module.id}>
+            <button className="module-check" type="button" onClick={() => toggleModule(module.id)} disabled={!editingLayout} aria-label={`Seleccionar Módulo ${moduleIndex + 1}`}>
               {selectedModuleIds.includes(module.id) && <span />}
             </button>
             <div className="rack-title">
@@ -1081,6 +1104,7 @@ function ShelvingManager({ warehouse }) {
                       max="8"
                       value={value}
                       onChange={(event) => saveShelf(module.id, numero, event.target.value)}
+                      disabled={!editingLayout}
                       aria-label={`Baldas estante ${numero}`}
                     />
                     <div className="shelf-preview" style={{ gridTemplateColumns: `repeat(${Math.max(value, 1)}, minmax(0, 1fr))` }}>
