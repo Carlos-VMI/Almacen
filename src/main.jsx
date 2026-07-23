@@ -75,7 +75,17 @@ function cloneEmptyArticle() {
 }
 
 function formatRole(value) {
-  return value === 'operador' ? 'operario' : value;
+  const role = String(value || '').toLowerCase();
+  if (role === 'operador') return 'operario';
+  if (role === 'admin') return 'administrador';
+  return role;
+}
+
+function roleLabel(value) {
+  const role = formatRole(value);
+  if (role === 'administrador') return 'Administrador';
+  if (role === 'repositor') return 'Repositor';
+  return 'Operario';
 }
 
 function normalizeImportKey(value) {
@@ -820,9 +830,9 @@ function OperatorsManager({ warehouse }) {
           <label>
             Rol
             <select value={form.rol} onChange={(event) => setForm({ ...form, rol: event.target.value })}>
+              <option value="administrador">Administrador</option>
+              <option value="repositor">Repositor</option>
               <option value="operario">Operario</option>
-              <option value="supervisor">Supervisor</option>
-              <option value="admin">Admin</option>
             </select>
           </label>
           <label>
@@ -886,7 +896,7 @@ function OperatorsManager({ warehouse }) {
                   </td>
                   <td>{operator.nombre}</td>
                   <td>{operator.email}</td>
-                  <td>{formatRole(operator.rol)}</td>
+                  <td>{roleLabel(operator.rol)}</td>
                   <td>{operator.activo ? 'Activo' : 'Inactivo'}</td>
                   <td className="row-actions">
                     <button className="icon-button" type="button" onClick={() => setSelected(operator)} aria-label="Editar"><Pencil size={17} /></button>

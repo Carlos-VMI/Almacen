@@ -31,7 +31,7 @@ create table if not exists public.almacen_operadores (
   almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
   nombre text not null,
   email text not null,
-  rol text not null default 'operador',
+  rol text not null default 'operario',
   pin text,
   activo boolean not null default true,
   created_at timestamptz not null default now(),
@@ -85,6 +85,14 @@ drop trigger if exists almacen_operadores_set_updated_at on public.almacen_opera
 create trigger almacen_operadores_set_updated_at
 before update on public.almacen_operadores
 for each row execute function public.set_updated_at();
+
+update public.almacen_operadores
+set rol = 'operario'
+where rol = 'operador';
+
+update public.almacen_operadores
+set rol = 'administrador'
+where rol = 'admin';
 
 drop trigger if exists almacen_modulos_set_updated_at on public.almacen_modulos;
 create trigger almacen_modulos_set_updated_at
