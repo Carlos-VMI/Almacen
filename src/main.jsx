@@ -1336,16 +1336,29 @@ function App() {
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
+    let mounted = true;
+
+    async function initializeAuth() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (mounted) setSession(data.session);
+      } finally {
+        if (mounted) setCheckingSession(false);
+      }
+    }
+
+    initializeAuth();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+      if (!mounted) return;
+      setSession(currentSession);
       setCheckingSession(false);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, currentSession) => {
-      setSession(currentSession);
-    });
-
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   if (checkingSession) {
