@@ -43,6 +43,18 @@ function nextModuleName(count) {
   return `Módulo ${count + 1}`;
 }
 
+async function ensureDefaultShelves(moduleId) {
+  const rows = Array.from({ length: 8 }, (_, index) => ({
+    modulo_id: moduleId,
+    numero: index + 1,
+    cantidad_baldas: 0,
+  }));
+
+  return supabase
+    .from('almacen_estantes')
+    .upsert(rows, { onConflict: 'modulo_id,numero' });
+}
+
 function normalizeSuffixes(value) {
   if (Array.isArray(value) && value.length) {
     return value.map((item, index) => ({
@@ -1017,6 +1029,11 @@ function ShelvingManager({ warehouse }) {
         setError(createError.message);
         return;
       }
+      const { error: shelfCreateError } = await ensureDefaultShelves(created.id);
+      if (shelfCreateError) {
+        setError(shelfCreateError.message);
+        return;
+      }
       currentModules = [created];
     }
 
@@ -1045,13 +1062,27 @@ function ShelvingManager({ warehouse }) {
   }
 
   async function addModule() {
-    const { error: createError } = await supabase.from('almacen_modulos').insert({
-      almacen_id: warehouse.id,
-      nombre: nextModuleName(modules.length),
-      orden: modules.length + 1,
-    });
-    if (createError) setError(createError.message);
-    else loadLayout();
+    const { data: created, error: createError } = await supabase
+      .from('almacen_modulos')
+      .insert({
+        almacen_id: warehouse.id,
+        nombre: nextModuleName(modules.length),
+        orden: modules.length + 1,
+      })
+      .select()
+      .single();
+    if (createError) {
+      setError(createError.message);
+      return;
+    }
+
+    const { error: shelfCreateError } = await ensureDefaultShelves(created.id);
+    if (shelfCreateError) {
+      setError(shelfCreateError.message);
+      return;
+    }
+
+    loadLayout();
   }
 
   async function normalizeModuleOrder() {
