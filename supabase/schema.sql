@@ -1,5 +1,7 @@
 create extension if not exists "pgcrypto";
 
+drop table if exists public.almacen_sync;
+
 create table if not exists public.almacen_bases (
   id uuid primary key default gen_random_uuid(),
   nombre text not null,
@@ -56,13 +58,6 @@ create table if not exists public.almacen_estantes (
   updated_at timestamptz not null default now()
 );
 
-create table if not exists public.almacen_sync (
-  almacen_id uuid primary key references public.almacen_bases(id) on delete cascade,
-  ultima_actualizacion timestamptz not null default now(),
-  motivo text,
-  updated_at timestamptz not null default now()
-);
-
 create unique index if not exists almacen_bases_nombre_key on public.almacen_bases (nombre);
 create unique index if not exists almacen_articulos_codigo_key on public.almacen_articulos (almacen_id, codigo_articulo);
 create unique index if not exists almacen_articulos_sku_key on public.almacen_articulos (almacen_id, sku);
@@ -111,24 +106,17 @@ create trigger almacen_estantes_set_updated_at
 before update on public.almacen_estantes
 for each row execute function public.set_updated_at();
 
-drop trigger if exists almacen_sync_set_updated_at on public.almacen_sync;
-create trigger almacen_sync_set_updated_at
-before update on public.almacen_sync
-for each row execute function public.set_updated_at();
-
 alter table public.almacen_bases enable row level security;
 alter table public.almacen_articulos enable row level security;
 alter table public.almacen_operadores enable row level security;
 alter table public.almacen_modulos enable row level security;
 alter table public.almacen_estantes enable row level security;
-alter table public.almacen_sync enable row level security;
 
 drop policy if exists "Usuarios autenticados gestionan bases de almacen" on public.almacen_bases;
 drop policy if exists "Usuarios autenticados gestionan articulos de almacen" on public.almacen_articulos;
 drop policy if exists "Usuarios autenticados gestionan operadores de almacen" on public.almacen_operadores;
 drop policy if exists "Usuarios autenticados gestionan modulos de almacen" on public.almacen_modulos;
 drop policy if exists "Usuarios autenticados gestionan estantes de almacen" on public.almacen_estantes;
-drop policy if exists "Usuarios autenticados gestionan sync de almacen" on public.almacen_sync;
 
 create policy "Usuarios autenticados gestionan bases de almacen"
 on public.almacen_bases for all
@@ -159,14 +147,5 @@ on public.almacen_estantes for all
 to authenticated
 using (true)
 with check (true);
-
-create policy "Usuarios autenticados gestionan sync de almacen"
-on public.almacen_sync for all
-to authenticated
-using (true)
-with check (true);
-
-grant all on public.almacen_sync to authenticated;
-grant select on public.almacen_sync to anon;
 
 notify pgrst, 'reload schema';
