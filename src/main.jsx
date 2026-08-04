@@ -1094,6 +1094,12 @@ function ShelvingManager({ warehouse }) {
       return;
     }
     if (!window.confirm(`Quitar ${selectedModuleIds.length} módulos seleccionados? Se perderá su configuración de estantes.`)) return;
+    const { error: shelfDeleteError } = await supabase.from('almacen_estantes').delete().in('modulo_id', selectedModuleIds);
+    if (shelfDeleteError) {
+      setError(shelfDeleteError.message);
+      return;
+    }
+
     const { error: deleteError } = await supabase.from('almacen_modulos').delete().in('id', selectedModuleIds);
     if (deleteError) {
       setError(deleteError.message);
