@@ -55,6 +55,25 @@ async function ensureDefaultShelves(moduleId) {
     .upsert(rows, { onConflict: 'modulo_id,numero' });
 }
 
+async function signalWarehouseSync(almacenId, motivo) {
+  if (!almacenId) return;
+
+  const { error } = await supabase
+    .from('almacen_sync')
+    .upsert(
+      {
+        almacen_id: almacenId,
+        ultima_actualizacion: new Date().toISOString(),
+        motivo,
+      },
+      { onConflict: 'almacen_id' }
+    );
+
+  if (error) {
+    console.error('No se pudo emitir la señal de sincronización', error);
+  }
+}
+
 function normalizeSuffixes(value) {
   if (Array.isArray(value) && value.length) {
     return value.map((item, index) => ({
@@ -540,6 +559,7 @@ function ArticleManager({ warehouse, refreshKey }) {
       return;
     }
 
+    await signalWarehouseSync(warehouse.id, selected?.id ? 'articulo_actualizado' : 'articulo_creado');
     setSelected(null);
     setForm(cloneEmptyArticle());
     loadArticles();
@@ -552,6 +572,7 @@ function ArticleManager({ warehouse, refreshKey }) {
       setError(deleteError.message);
       return;
     }
+    await signalWarehouseSync(warehouse.id, 'articulo_eliminado');
     loadArticles();
   }
 
@@ -565,6 +586,7 @@ function ArticleManager({ warehouse, refreshKey }) {
     }
     setSelectedIds([]);
     setSelected(null);
+    await signalWarehouseSync(warehouse.id, 'articulos_eliminados');
     loadArticles();
   }
 
@@ -849,6 +871,7 @@ function OperatorsManager({ warehouse }) {
 
     setSelected(null);
     setForm(emptyOperator);
+    await signalWarehouseSync(warehouse.id, selected?.id ? 'operario_actualizado' : 'operario_creado');
     loadOperators();
   }
 
@@ -862,6 +885,7 @@ function OperatorsManager({ warehouse }) {
     }
     setSelectedIds([]);
     setSelected(null);
+    await signalWarehouseSync(warehouse.id, 'operarios_eliminados');
     loadOperators();
   }
 
@@ -1082,6 +1106,7 @@ function ShelvingManager({ warehouse }) {
       return;
     }
 
+    await signalWarehouseSync(warehouse.id, 'modulo_creado');
     loadLayout();
   }
 
@@ -1139,6 +1164,7 @@ function ShelvingManager({ warehouse }) {
     setSelectedModuleIds([]);
     setEditingModuleIds((current) => current.filter((id) => !selectedModuleIds.includes(id)));
     await normalizeModuleOrder();
+    await signalWarehouseSync(warehouse.id, 'modulo_eliminado');
     loadLayout();
   }
 
@@ -1161,6 +1187,7 @@ function ShelvingManager({ warehouse }) {
     }
 
     setShelves((current) => ({ ...current, [`${moduleId}-${numero}`]: Math.min(8, Math.max(0, toNumber(cantidad, 0))) }));
+    await signalWarehouseSync(warehouse.id, 'estante_actualizado');
   }
 
   function editSelectedModules() {
@@ -1169,10 +1196,11 @@ function ShelvingManager({ warehouse }) {
     setError('');
   }
 
-  function saveSelectedModules() {
+  async function saveSelectedModules() {
     if (!selectedModuleIds.length) return;
     setEditingModuleIds((current) => current.filter((id) => !selectedModuleIds.includes(id)));
     setSelectedModuleIds([]);
+    await signalWarehouseSync(warehouse.id, 'modulos_guardados');
     setError('');
   }
 
