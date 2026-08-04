@@ -32,6 +32,7 @@ const emptyArticle = {
 };
 const emptyOperator = { nombre: '', email: '', rol: 'operario', pin: '', activo: true };
 const suffixOptions = ['01', '02', '03', '04'];
+const PAGE_SIZE = 15;
 
 function toNumber(value, fallback = 0) {
   const parsed = Number(value);
@@ -72,6 +73,47 @@ function normalizeFormSuffixes(value) {
 
 function cloneEmptyArticle() {
   return { ...emptyArticle, sufijos: normalizeFormSuffixes(emptyArticle.sufijos) };
+}
+
+function PaginationControls({ page, totalItems, pageSize = PAGE_SIZE, onPageChange, label = 'registros' }) {
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const start = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(totalItems, page * pageSize);
+
+  if (totalItems <= pageSize) {
+    return totalItems ? (
+      <div className="pagination-bar compact">
+        <span>{totalItems} {label}</span>
+      </div>
+    ) : null;
+  }
+
+  return (
+    <div className="pagination-bar">
+      <span>
+        {start}-{end} de {totalItems} {label}
+      </span>
+      <div className="pagination-actions">
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+          disabled={page <= 1}
+        >
+          Anterior
+        </button>
+        <strong>{page} / {totalPages}</strong>
+        <button
+          className="secondary-button"
+          type="button"
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+          disabled={page >= totalPages}
+        >
+          Siguiente
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function formatRole(value) {
@@ -421,12 +463,17 @@ function ArticleManager({ warehouse, refreshKey }) {
   const [form, setForm] = useState(cloneEmptyArticle);
   const [selectedIds, setSelectedIds] = useState([]);
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     loadArticles();
   }, [warehouse.id, refreshKey]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [warehouse.id, query]);
 
   useEffect(() => {
     setForm(selected ? { ...selected, sufijos: normalizeFormSuffixes(selected.sufijos) } : cloneEmptyArticle());
@@ -516,7 +563,7 @@ function ArticleManager({ warehouse, refreshKey }) {
   }
 
   function toggleAllArticles() {
-    const visibleIds = filtered.map((article) => article.id);
+    const visibleIds = paginatedArticles.map((article) => article.id);
     setSelectedIds((current) => (
       visibleIds.every((id) => current.includes(id))
         ? current.filter((id) => !visibleIds.includes(id))
@@ -563,6 +610,9 @@ function ArticleManager({ warehouse, refreshKey }) {
         .some((value) => value.toLowerCase().includes(needle))
     );
   }, [articles, query]);
+  const totalArticlePages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safeArticlePage = Math.min(page, totalArticlePages);
+  const paginatedArticles = filtered.slice((safeArticlePage - 1) * PAGE_SIZE, safeArticlePage * PAGE_SIZE);
 
   return (
     <div className="content-grid">
@@ -662,9 +712,9 @@ function ArticleManager({ warehouse, refreshKey }) {
                   <th className="select-cell">
                     <input
                       type="checkbox"
-                      checked={filtered.length > 0 && filtered.every((article) => selectedIds.includes(article.id))}
+                      checked={paginatedArticles.length > 0 && paginatedArticles.every((article) => selectedIds.includes(article.id))}
                       onChange={toggleAllArticles}
-                      aria-label="Seleccionar artículos visibles"
+                      aria-label="Seleccionar artículos de esta página"
                     />
                   </th>
                   <th>Código artículo</th>
@@ -681,7 +731,7 @@ function ArticleManager({ warehouse, refreshKey }) {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((article) => (
+                {paginatedArticles.map((article) => (
                   <tr key={article.id}>
                     <td className="select-cell">
                       <input
@@ -716,6 +766,12 @@ function ArticleManager({ warehouse, refreshKey }) {
                 ))}
               </tbody>
             </table>
+            <PaginationControls
+              page={safeArticlePage}
+              totalItems={filtered.length}
+              onPageChange={setPage}
+              label="artículos"
+            />
             {!filtered.length && <div className="empty-inline">No hay artículos para mostrar.</div>}
           </div>
         )}
@@ -729,10 +785,15 @@ function OperatorsManager({ warehouse }) {
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(emptyOperator);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState('');
 
   useEffect(() => {
     loadOperators();
+  }, [warehouse.id]);
+
+  useEffect(() => {
+    setPage(1);
   }, [warehouse.id]);
 
   useEffect(() => {
@@ -799,13 +860,17 @@ function OperatorsManager({ warehouse }) {
   }
 
   function toggleAllOperators() {
-    const visibleIds = operators.map((operator) => operator.id);
+    const visibleIds = paginatedOperators.map((operator) => operator.id);
     setSelectedIds((current) => (
       visibleIds.every((id) => current.includes(id))
         ? current.filter((id) => !visibleIds.includes(id))
         : Array.from(new Set([...current, ...visibleIds]))
     ));
   }
+
+  const totalOperatorPages = Math.max(1, Math.ceil(operators.length / PAGE_SIZE));
+  const safeOperatorPage = Math.min(page, totalOperatorPages);
+  const paginatedOperators = operators.slice((safeOperatorPage - 1) * PAGE_SIZE, safeOperatorPage * PAGE_SIZE);
 
   return (
     <div className="content-grid">
@@ -871,9 +936,9 @@ function OperatorsManager({ warehouse }) {
                 <th className="select-cell">
                   <input
                     type="checkbox"
-                    checked={operators.length > 0 && operators.every((operator) => selectedIds.includes(operator.id))}
+                    checked={paginatedOperators.length > 0 && paginatedOperators.every((operator) => selectedIds.includes(operator.id))}
                     onChange={toggleAllOperators}
-                    aria-label="Seleccionar usuarios"
+                    aria-label="Seleccionar usuarios de esta página"
                   />
                 </th>
                 <th>Nombre</th>
@@ -884,7 +949,7 @@ function OperatorsManager({ warehouse }) {
               </tr>
             </thead>
             <tbody>
-              {operators.map((operator) => (
+              {paginatedOperators.map((operator) => (
                 <tr key={operator.id}>
                   <td className="select-cell">
                     <input
@@ -905,6 +970,12 @@ function OperatorsManager({ warehouse }) {
               ))}
             </tbody>
           </table>
+          <PaginationControls
+            page={safeOperatorPage}
+            totalItems={operators.length}
+            onPageChange={setPage}
+            label="usuarios"
+          />
           {!operators.length && <div className="empty-inline">Todavía no hay usuarios operativos.</div>}
         </div>
       </section>

@@ -401,20 +401,22 @@ select:focus {
 
 .warehouse-check {
   align-items: center;
+  appearance: none;
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 999px;
-  display: inline-flex;
+  display: grid;
   flex: 0 0 auto;
-  height: 16px;
+  height: 18px;
   justify-content: center;
   line-height: 0;
   margin-top: 0;
   padding: 0;
+  place-items: center;
   position: absolute;
   right: 12px;
   top: 12px;
-  width: 16px;
+  width: 18px;
   z-index: 2;
   caret-color: transparent;
   cursor: pointer !important;
@@ -427,10 +429,8 @@ select:focus {
   display: block;
   height: 8px;
   margin: 0;
-  left: 50%;
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  position: static;
+  transform: none;
   width: 8px;
   caret-color: transparent;
   cursor: inherit !important;
@@ -564,6 +564,42 @@ select:focus {
 
 .table-panel {
   overflow-x: auto;
+}
+
+.pagination-bar {
+  align-items: center;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  color: #475569;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  min-width: 900px;
+  padding: 12px 16px;
+}
+
+.pagination-bar.compact {
+  justify-content: flex-end;
+}
+
+.pagination-bar span,
+.pagination-bar strong {
+  caret-color: transparent;
+  cursor: default !important;
+  font-size: 13px;
+  font-weight: 800;
+  user-select: none;
+}
+
+.pagination-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.pagination-actions .secondary-button {
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .bulk-bar {
