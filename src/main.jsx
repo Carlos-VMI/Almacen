@@ -27,7 +27,7 @@ const DEFAULT_SHELF_WIDTH_CM = 100;
 const DEFAULT_TOTAL_LEDS = 60;
 const DEFAULT_LED_DENSITY = 60;
 
-const emptyWarehouse = { nombre: '', ubicacion: '', descripcion: '', ancho_estante_cm: DEFAULT_SHELF_WIDTH_CM };
+const emptyWarehouse = { nombre: '', ubicacion: '', descripcion: '' };
 const emptyArticle = {
   codigo_articulo: '',
   codigo_cliente: '',
@@ -63,15 +63,16 @@ function readJsonArray(value) {
   return [];
 }
 
-function calculateLedLayout({ cajones, shelfWidthCm, controller, channel }) {
+function calculateLedLayout({ cajones, shelfWidthCm, controller, channel, shelfNumber = 1 }) {
   const width = Math.max(1, toNumber(shelfWidthCm, DEFAULT_SHELF_WIDTH_CM));
   const density = Math.max(0, toNumber(controller?.leds_por_metro, DEFAULT_LED_DENSITY)) / 100;
+  const shelfOffsetCm = Math.max(0, toNumber(shelfNumber, 1) - 1) * width;
   let cursorCm = 0;
 
   return cajones.map((cajon, index) => {
     const anchoCm = Math.max(0, toNumber(cajon.ancho_cm, 0));
-    const startLed = density > 0 ? Math.round(cursorCm * density) : 0;
-    const endLed = density > 0 ? Math.round((cursorCm + anchoCm) * density) : 0;
+    const startLed = density > 0 ? Math.round((shelfOffsetCm + cursorCm) * density) : 0;
+    const endLed = density > 0 ? Math.round((shelfOffsetCm + cursorCm + anchoCm) * density) : 0;
     cursorCm += anchoCm;
 
     return {
@@ -120,7 +121,7 @@ function normalizeShelfRecord(row, shelfWidthCm, module = {}, controllersById = 
   };
 }
 
-function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controllersById = new Map()) {
+function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controllersById = new Map(), shelfNumber = 1) {
   const base = {
     ...current,
     ...patch,
@@ -148,12 +149,16 @@ function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controller
 
   return {
     cantidad_baldas: count,
-    total_leds: Math.max(0, toNumber(base.total_leds, DEFAULT_TOTAL_LEDS)),
+    total_leds: Math.max(
+      0,
+      Math.round(width * (Math.max(0, toNumber(controllersById.get(module?.controlador_id)?.leds_por_metro, DEFAULT_LED_DENSITY)) / 100))
+    ),
     cajones: calculateLedLayout({
       cajones,
       shelfWidthCm: width,
       controller: controllersById.get(module?.controlador_id) ?? null,
       channel: module?.canal_led ?? 1,
+      shelfNumber,
     }),
   };
 }
@@ -457,7 +462,6 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
       nombre: warehouse.nombre || '',
       ubicacion: warehouse.ubicacion || '',
       descripcion: warehouse.descripcion || '',
-      ancho_estante_cm: toNumber(warehouse.ancho_estante_cm, DEFAULT_SHELF_WIDTH_CM),
     });
   }
 
@@ -528,16 +532,6 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
               placeholder="Repuestos, consumibles, herramientas..."
             />
           </label>
-          <label>
-            Ancho estante común (cm)
-            <input
-              type="text"
-              inputMode="decimal"
-              value={form.ancho_estante_cm}
-              onChange={(event) => setForm({ ...form, ancho_estante_cm: event.target.value.replace(/[^0-9.]/g, '') })}
-              placeholder="100"
-            />
-          </label>
           <button className="primary-button" type="submit">
             {editing ? <Save size={18} /> : <Plus size={18} />}
             {editing ? 'Guardar base' : 'Crear base'}
@@ -581,7 +575,6 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
                     <div>
                       <strong>{warehouse.nombre}</strong>
                       <span>{warehouse.ubicacion}</span>
-                      <small>Ancho estante: {toNumber(warehouse.ancho_estante_cm, DEFAULT_SHELF_WIDTH_CM)} cm</small>
                       {warehouse.descripcion && <small>{warehouse.descripcion}</small>}
                     </div>
                   </button>
@@ -1395,18 +1388,16 @@ function ShelvingManager({ warehouse }) {
   const [boxTypes, setBoxTypes] = useState([]);
   const [selectedModuleIds, setSelectedModuleIds] = useState([]);
   const [editingModuleIds, setEditingModuleIds] = useState([]);
-  const [defaultWidthCm, setDefaultWidthCm] = useState(toNumber(warehouse.ancho_estante_cm, DEFAULT_SHELF_WIDTH_CM));
   const [error, setError] = useState('');
 
   useEffect(() => {
-    setDefaultWidthCm(toNumber(warehouse.ancho_estante_cm, DEFAULT_SHELF_WIDTH_CM));
     loadLayout();
   }, [warehouse.id]);
 
   const controllersById = useMemo(() => new Map(controllers.map((controller) => [controller.id, controller])), [controllers]);
 
   function moduleShelfWidth(module) {
-    return Math.max(1, toNumber(module.ancho_estante_cm, defaultWidthCm || DEFAULT_SHELF_WIDTH_CM));
+    return Math.max(1, toNumber(module.ancho_estante_cm, DEFAULT_SHELF_WIDTH_CM));
   }
 
   async function loadLayout() {
@@ -1483,29 +1474,13 @@ function ShelvingManager({ warehouse }) {
         const module = currentModules.find((item) => item.id === shelf.modulo_id);
         acc[`${shelf.modulo_id}-${shelf.numero}`] = normalizeShelfRecord(
           shelf,
-          module?.ancho_estante_cm || defaultWidthCm,
+          module?.ancho_estante_cm || DEFAULT_SHELF_WIDTH_CM,
           module,
           loadedControllersById
         );
         return acc;
       }, {})
     );
-    setError('');
-  }
-
-  async function saveDefaultWidth() {
-    const width = Math.max(1, toNumber(defaultWidthCm, DEFAULT_SHELF_WIDTH_CM));
-    const { error: saveError } = await supabase
-      .from('almacen_bases')
-      .update({ ancho_estante_cm: width })
-      .eq('id', warehouse.id);
-
-    if (saveError) {
-      setError(saveError.message);
-      return;
-    }
-
-    setDefaultWidthCm(width);
     setError('');
   }
 
@@ -1568,7 +1543,7 @@ function ShelvingManager({ warehouse }) {
 
   async function updateModuleWidth(moduleId, value) {
     if (!editingModuleIds.includes(moduleId)) return;
-    const width = Math.max(1, toNumber(value, defaultWidthCm || DEFAULT_SHELF_WIDTH_CM));
+    const width = Math.max(1, toNumber(value, DEFAULT_SHELF_WIDTH_CM));
     const { error: updateError } = await supabase
       .from('almacen_modulos')
       .update({ ancho_estante_cm: width })
@@ -1639,7 +1614,7 @@ function ShelvingManager({ warehouse }) {
     let payload;
 
     try {
-      payload = buildShelfPayload(current, patch, moduleShelfWidth(module || {}), module, controllersById);
+      payload = buildShelfPayload(current, patch, moduleShelfWidth(module || {}), module, controllersById, numero);
     } catch (validationError) {
       setError(validationError.message);
       return;
@@ -1729,20 +1704,6 @@ function ShelvingManager({ warehouse }) {
           <h2>Layout de módulos y baldas</h2>
         </div>
         <div className="module-actions">
-          <label className="inline-setting">
-            Ancho común
-            <input
-              type="text"
-              inputMode="decimal"
-              value={defaultWidthCm}
-              onChange={(event) => setDefaultWidthCm(event.target.value.replace(/[^0-9.]/g, ''))}
-            />
-            <span>cm</span>
-          </label>
-          <button className="secondary-button" type="button" onClick={saveDefaultWidth}>
-            <Save size={18} />
-            Guardar ancho
-          </button>
           <button className="secondary-button" type="button" onClick={editSelectedModules} disabled={!selectedModuleIds.length}>
             <Pencil size={18} />
             Editar
@@ -1765,7 +1726,7 @@ function ShelvingManager({ warehouse }) {
       <div className="catalog-strip">
         <strong>Catálogo de cubetas</strong>
         {boxTypes.length ? boxTypes.map((boxType) => (
-          <span key={boxType.id}>{boxType.codigo} · {boxType.nombre} · {boxType.ancho_cm} cm</span>
+          <span key={boxType.id}>{boxType.codigo} - {boxType.ancho_cm}cm</span>
         )) : <span>Crea cubetas en el panel Catálogo antes de construir las baldas.</span>}
       </div>
 
@@ -1787,7 +1748,7 @@ function ShelvingManager({ warehouse }) {
                     inputMode="decimal"
                     value={module.ancho_estante_cm ?? ''}
                     onChange={(event) => updateModuleWidth(module.id, event.target.value.replace(/[^0-9.]/g, ''))}
-                    placeholder={`${defaultWidthCm}`}
+                    placeholder={`${DEFAULT_SHELF_WIDTH_CM}`}
                     disabled={!editingModuleIds.includes(module.id)}
                   />
                   <span>cm</span>
@@ -1862,7 +1823,7 @@ function ShelvingManager({ warehouse }) {
                           style={{ width: `${Math.max(4, (toNumber(cajon.ancho_cm, 0) / widthLimit) * 100)}%` }}
                         >
                           <i>{cajon.cubeta_codigo || `C${shelfIndex + 1}`}</i>
-                          <small>{cajon.ancho_cm} cm · LED {cajon.startLed}+{cajon.ledCount}</small>
+                          <small>{cajon.ancho_cm} cm</small>
                         </div>
                       ))}
                       {freeWidth > 0 && (
@@ -1998,7 +1959,6 @@ function Dashboard({ session }) {
       nombre: form.nombre.trim(),
       ubicacion: form.ubicacion.trim(),
       descripcion: form.descripcion.trim(),
-      ancho_estante_cm: Math.max(1, toNumber(form.ancho_estante_cm, DEFAULT_SHELF_WIDTH_CM)),
     });
 
     if (createError) {
@@ -2014,7 +1974,6 @@ function Dashboard({ session }) {
       nombre: form.nombre.trim(),
       ubicacion: form.ubicacion.trim(),
       descripcion: form.descripcion.trim(),
-      ancho_estante_cm: Math.max(1, toNumber(form.ancho_estante_cm, DEFAULT_SHELF_WIDTH_CM)),
     }).eq('id', id);
 
     if (updateError) {
