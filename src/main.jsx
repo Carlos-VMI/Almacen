@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Boxes,
   Building2,
+  Cpu,
   Database,
   FileSpreadsheet,
   LayoutGrid,
@@ -24,6 +25,7 @@ import './styles.css';
 
 const DEFAULT_SHELF_WIDTH_CM = 100;
 const DEFAULT_TOTAL_LEDS = 60;
+const DEFAULT_LED_DENSITY = 60;
 
 const emptyWarehouse = { nombre: '', ubicacion: '', descripcion: '', ancho_estante_cm: DEFAULT_SHELF_WIDTH_CM };
 const emptyArticle = {
@@ -34,6 +36,8 @@ const emptyArticle = {
   sufijos: [{ sufijo: '01', capacidad: '' }],
 };
 const emptyOperator = { nombre: '', email: '', rol: 'operario', pin: '', activo: true };
+const emptyController = { nombre: '', ip: '', tipo_tira: 'WS2812B', leds_por_metro: DEFAULT_LED_DENSITY };
+const emptyBoxType = { codigo: '', nombre: '', ancho_cm: '' };
 const suffixOptions = ['01', '02', '03', '04'];
 const PAGE_SIZE = 15;
 
@@ -59,10 +63,9 @@ function readJsonArray(value) {
   return [];
 }
 
-function calculateLedLayout({ cajones, shelfWidthCm, totalLeds, esp32Ip }) {
+function calculateLedLayout({ cajones, shelfWidthCm, controller, channel }) {
   const width = Math.max(1, toNumber(shelfWidthCm, DEFAULT_SHELF_WIDTH_CM));
-  const leds = Math.max(0, toNumber(totalLeds, 0));
-  const density = leds > 0 ? leds / width : 0;
+  const density = Math.max(0, toNumber(controller?.leds_por_metro, DEFAULT_LED_DENSITY)) / 100;
   let cursorCm = 0;
 
   return cajones.map((cajon, index) => {
@@ -74,26 +77,37 @@ function calculateLedLayout({ cajones, shelfWidthCm, totalLeds, esp32Ip }) {
     return {
       posicion: index + 1,
       etiqueta: `C${index + 1}`,
+      cubeta_id: cajon.cubeta_id ?? null,
+      cubeta_codigo: cajon.cubeta_codigo ?? cajon.codigo ?? `C${index + 1}`,
+      nombre: cajon.nombre ?? cajon.cubeta_nombre ?? '',
       ancho_cm: anchoCm,
-      esp32_ip: String(esp32Ip || '').trim(),
+      controlador_id: controller?.id ?? null,
+      esp32_ip: String(controller?.ip || '').trim(),
+      canal: toNumber(channel, 1),
       startLed,
       ledCount: Math.max(0, endLed - startLed),
     };
   });
 }
 
-function normalizeShelfRecord(row, shelfWidthCm) {
+function normalizeShelfRecord(row, shelfWidthCm, module = {}, controllersById = new Map()) {
   const count = clampShelfCount(row?.cantidad_baldas);
   const width = Math.max(1, toNumber(shelfWidthCm, DEFAULT_SHELF_WIDTH_CM));
   const existing = readJsonArray(row?.cajones);
   const fallbackWidth = count > 0 ? Math.floor((width / count) * 10) / 10 : 0;
+  const controller = controllersById.get(module?.controlador_id) ?? null;
   const cajones = Array.from({ length: count }, (_, index) => {
     const current = existing.find((item) => toNumber(item.posicion) === index + 1) ?? existing[index] ?? {};
     return {
       posicion: index + 1,
       etiqueta: `C${index + 1}`,
+      cubeta_id: current.cubeta_id ?? null,
+      cubeta_codigo: current.cubeta_codigo ?? current.codigo ?? `C${index + 1}`,
+      nombre: current.nombre ?? current.cubeta_nombre ?? '',
       ancho_cm: toNumber(current.ancho_cm, fallbackWidth),
-      esp32_ip: String(current.esp32_ip || row?.esp32_ip || '').trim(),
+      controlador_id: current.controlador_id ?? module?.controlador_id ?? null,
+      esp32_ip: String(current.esp32_ip || controller?.ip || row?.esp32_ip || '').trim(),
+      canal: toNumber(current.canal ?? module?.canal_led, 1),
       startLed: toNumber(current.startLed, 0),
       ledCount: toNumber(current.ledCount, 0),
     };
@@ -101,13 +115,12 @@ function normalizeShelfRecord(row, shelfWidthCm) {
 
   return {
     cantidad_baldas: count,
-    esp32_ip: String(row?.esp32_ip || '').trim(),
     total_leds: toNumber(row?.total_leds, DEFAULT_TOTAL_LEDS),
     cajones,
   };
 }
 
-function buildShelfPayload(current, patch, shelfWidthCm) {
+function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controllersById = new Map()) {
   const base = {
     ...current,
     ...patch,
@@ -121,6 +134,9 @@ function buildShelfPayload(current, patch, shelfWidthCm) {
     const currentCajon = existing.find((item) => toNumber(item.posicion) === index + 1) ?? existing[index] ?? {};
     return {
       posicion: index + 1,
+      cubeta_id: currentCajon.cubeta_id ?? null,
+      cubeta_codigo: currentCajon.cubeta_codigo ?? currentCajon.codigo ?? `C${index + 1}`,
+      nombre: currentCajon.nombre ?? currentCajon.cubeta_nombre ?? '',
       ancho_cm: toNumber(currentCajon.ancho_cm, fallbackWidth),
     };
   });
@@ -132,13 +148,12 @@ function buildShelfPayload(current, patch, shelfWidthCm) {
 
   return {
     cantidad_baldas: count,
-    esp32_ip: String(base.esp32_ip || '').trim(),
     total_leds: Math.max(0, toNumber(base.total_leds, DEFAULT_TOTAL_LEDS)),
     cajones: calculateLedLayout({
       cajones,
       shelfWidthCm: width,
-      totalLeds: base.total_leds,
-      esp32Ip: base.esp32_ip,
+      controller: controllersById.get(module?.controlador_id) ?? null,
+      channel: module?.canal_led ?? 1,
     }),
   };
 }
@@ -1112,9 +1127,272 @@ function OperatorsManager({ warehouse }) {
   );
 }
 
+function IoTControllersManager({ warehouse }) {
+  const [controllers, setControllers] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [form, setForm] = useState(emptyController);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadControllers();
+  }, [warehouse.id]);
+
+  useEffect(() => {
+    setForm(selected ? {
+      nombre: selected.nombre || '',
+      ip: selected.ip || '',
+      tipo_tira: selected.tipo_tira || 'WS2812B',
+      leds_por_metro: selected.leds_por_metro || DEFAULT_LED_DENSITY,
+    } : emptyController);
+  }, [selected]);
+
+  async function loadControllers() {
+    const { data, error: loadError } = await supabase
+      .from('almacen_iot_controladores')
+      .select('*')
+      .eq('almacen_id', warehouse.id)
+      .order('created_at', { ascending: false });
+
+    if (loadError) setError(loadError.message);
+    else {
+      setControllers(data || []);
+      setError('');
+    }
+  }
+
+  async function saveController(event) {
+    event.preventDefault();
+    const record = {
+      almacen_id: warehouse.id,
+      nombre: form.nombre.trim(),
+      ip: form.ip.trim(),
+      tipo_tira: form.tipo_tira,
+      leds_por_metro: Math.max(1, toNumber(form.leds_por_metro, DEFAULT_LED_DENSITY)),
+    };
+
+    const request = selected?.id
+      ? supabase.from('almacen_iot_controladores').update(record).eq('id', selected.id)
+      : supabase.from('almacen_iot_controladores').insert(record);
+    const { error: saveError } = await request;
+
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+
+    setSelected(null);
+    setForm(emptyController);
+    loadControllers();
+  }
+
+  async function deleteController(controller) {
+    if (!window.confirm(`Eliminar el controlador "${controller.nombre}"? Los módulos que lo usen quedarán sin hardware asignado.`)) return;
+    const { error: deleteError } = await supabase
+      .from('almacen_iot_controladores')
+      .delete()
+      .eq('id', controller.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    if (selected?.id === controller.id) setSelected(null);
+    loadControllers();
+  }
+
+  return (
+    <div className="content-grid">
+      <section className="form-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Hardware</span>
+            <h2>{selected ? 'Editar controlador IoT' : 'Nuevo controlador IoT'}</h2>
+          </div>
+          <Cpu size={22} />
+        </div>
+        <form className="stack-form" onSubmit={saveController}>
+          <label>
+            ID / Nombre
+            <input value={form.nombre} onChange={(event) => setForm({ ...form, nombre: event.target.value })} placeholder="ESP32 - Pasillo A" required />
+          </label>
+          <label>
+            IP de red
+            <input value={form.ip} onChange={(event) => setForm({ ...form, ip: event.target.value })} placeholder="192.168.1.50" required />
+          </label>
+          <label>
+            Tipo de tira LED
+            <select value={form.tipo_tira} onChange={(event) => setForm({ ...form, tipo_tira: event.target.value })}>
+              <option value="WS2812B">WS2812B</option>
+              <option value="WS2815">WS2815</option>
+            </select>
+          </label>
+          <label>
+            Densidad LED
+            <input type="text" inputMode="numeric" value={form.leds_por_metro} onChange={(event) => setForm({ ...form, leds_por_metro: event.target.value.replace(/\D/g, '') })} placeholder="60" required />
+            <small>LEDs por metro. Cada controlador tiene 4 canales disponibles.</small>
+          </label>
+          <button className="primary-button" type="submit">
+            <Save size={18} />
+            {selected ? 'Guardar controlador' : 'Crear controlador'}
+          </button>
+        </form>
+      </section>
+      <section className="inventory-panel">
+        <div className="panel-heading inventory-heading">
+          <div>
+            <span className="eyebrow">Controladores</span>
+            <h2>Gestión de Controladores IoT</h2>
+          </div>
+          <span className="counter-pill">{controllers.length}</span>
+        </div>
+        {error && <div className="error-box">{error}</div>}
+        <div className="cards-list">
+          {controllers.map((controller) => (
+            <article className="config-card" key={controller.id}>
+              <div>
+                <strong>{controller.nombre}</strong>
+                <span>{controller.ip} · {controller.tipo_tira} · {controller.leds_por_metro} LED/m</span>
+                <small>Canales disponibles: 1, 2, 3, 4</small>
+              </div>
+              <div className="row-actions">
+                <button className="icon-button" type="button" onClick={() => setSelected(controller)} aria-label="Editar controlador"><Pencil size={17} /></button>
+                <button className="icon-button danger" type="button" onClick={() => deleteController(controller)} aria-label="Eliminar controlador"><Trash2 size={17} /></button>
+              </div>
+            </article>
+          ))}
+          {!controllers.length && <div className="empty-inline">Todavía no hay controladores configurados.</div>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function BoxCatalogManager({ warehouse }) {
+  const [boxTypes, setBoxTypes] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [form, setForm] = useState(emptyBoxType);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    loadBoxTypes();
+  }, [warehouse.id]);
+
+  useEffect(() => {
+    setForm(selected ? {
+      codigo: selected.codigo || '',
+      nombre: selected.nombre || '',
+      ancho_cm: selected.ancho_cm || '',
+    } : emptyBoxType);
+  }, [selected]);
+
+  async function loadBoxTypes() {
+    const { data, error: loadError } = await supabase
+      .from('almacen_cubetas_catalogo')
+      .select('*')
+      .eq('almacen_id', warehouse.id)
+      .order('codigo', { ascending: true });
+    if (loadError) setError(loadError.message);
+    else {
+      setBoxTypes(data || []);
+      setError('');
+    }
+  }
+
+  async function saveBoxType(event) {
+    event.preventDefault();
+    const record = {
+      almacen_id: warehouse.id,
+      codigo: form.codigo.trim().toUpperCase(),
+      nombre: form.nombre.trim(),
+      ancho_cm: Math.max(1, toNumber(form.ancho_cm, 0)),
+    };
+    const request = selected?.id
+      ? supabase.from('almacen_cubetas_catalogo').update(record).eq('id', selected.id)
+      : supabase.from('almacen_cubetas_catalogo').insert(record);
+    const { error: saveError } = await request;
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+    setSelected(null);
+    setForm(emptyBoxType);
+    loadBoxTypes();
+  }
+
+  async function deleteBoxType(boxType) {
+    if (!window.confirm(`Eliminar la cubeta "${boxType.codigo}" del catálogo?`)) return;
+    const { error: deleteError } = await supabase.from('almacen_cubetas_catalogo').delete().eq('id', boxType.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    if (selected?.id === boxType.id) setSelected(null);
+    loadBoxTypes();
+  }
+
+  return (
+    <div className="content-grid">
+      <section className="form-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Catálogo</span>
+            <h2>{selected ? 'Editar cubeta' : 'Nueva cubeta estándar'}</h2>
+          </div>
+          <Boxes size={22} />
+        </div>
+        <form className="stack-form" onSubmit={saveBoxType}>
+          <label>
+            ID
+            <input value={form.codigo} onChange={(event) => setForm({ ...form, codigo: event.target.value })} placeholder="C1" required />
+          </label>
+          <label>
+            Nombre
+            <input value={form.nombre} onChange={(event) => setForm({ ...form, nombre: event.target.value })} placeholder="Pequeña" required />
+          </label>
+          <label>
+            Ancho físico
+            <input type="text" inputMode="decimal" value={form.ancho_cm} onChange={(event) => setForm({ ...form, ancho_cm: event.target.value.replace(/[^0-9.]/g, '') })} placeholder="12" required />
+            <small>cm</small>
+          </label>
+          <button className="primary-button" type="submit">
+            <Save size={18} />
+            {selected ? 'Guardar cubeta' : 'Crear cubeta'}
+          </button>
+        </form>
+      </section>
+      <section className="inventory-panel">
+        <div className="panel-heading inventory-heading">
+          <div>
+            <span className="eyebrow">Cubetas</span>
+            <h2>Catálogo de Cubetas/Cajas</h2>
+          </div>
+          <span className="counter-pill">{boxTypes.length}</span>
+        </div>
+        {error && <div className="error-box">{error}</div>}
+        <div className="cards-list">
+          {boxTypes.map((boxType) => (
+            <article className="config-card" key={boxType.id}>
+              <div>
+                <strong>{boxType.codigo} · {boxType.nombre}</strong>
+                <span>{boxType.ancho_cm} cm</span>
+              </div>
+              <div className="row-actions">
+                <button className="icon-button" type="button" onClick={() => setSelected(boxType)} aria-label="Editar cubeta"><Pencil size={17} /></button>
+                <button className="icon-button danger" type="button" onClick={() => deleteBoxType(boxType)} aria-label="Eliminar cubeta"><Trash2 size={17} /></button>
+              </div>
+            </article>
+          ))}
+          {!boxTypes.length && <div className="empty-inline">Crea cubetas estándar para construir las baldas.</div>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function ShelvingManager({ warehouse }) {
   const [modules, setModules] = useState([]);
   const [shelves, setShelves] = useState({});
+  const [controllers, setControllers] = useState([]);
+  const [boxTypes, setBoxTypes] = useState([]);
   const [selectedModuleIds, setSelectedModuleIds] = useState([]);
   const [editingModuleIds, setEditingModuleIds] = useState([]);
   const [defaultWidthCm, setDefaultWidthCm] = useState(toNumber(warehouse.ancho_estante_cm, DEFAULT_SHELF_WIDTH_CM));
@@ -1125,11 +1403,36 @@ function ShelvingManager({ warehouse }) {
     loadLayout();
   }, [warehouse.id]);
 
+  const controllersById = useMemo(() => new Map(controllers.map((controller) => [controller.id, controller])), [controllers]);
+
   function moduleShelfWidth(module) {
     return Math.max(1, toNumber(module.ancho_estante_cm, defaultWidthCm || DEFAULT_SHELF_WIDTH_CM));
   }
 
   async function loadLayout() {
+    const [{ data: controllerData, error: controllerError }, { data: boxData, error: boxError }] = await Promise.all([
+      supabase
+        .from('almacen_iot_controladores')
+        .select('*')
+        .eq('almacen_id', warehouse.id)
+        .order('nombre', { ascending: true }),
+      supabase
+        .from('almacen_cubetas_catalogo')
+        .select('*')
+        .eq('almacen_id', warehouse.id)
+        .order('codigo', { ascending: true }),
+    ]);
+
+    if (controllerError || boxError) {
+      setError(controllerError?.message || boxError?.message);
+      return;
+    }
+
+    const loadedControllers = controllerData || [];
+    setControllers(loadedControllers);
+    setBoxTypes(boxData || []);
+    const loadedControllersById = new Map(loadedControllers.map((controller) => [controller.id, controller]));
+
     const { data: moduleData, error: moduleError } = await supabase
       .from('almacen_modulos')
       .select('*')
@@ -1145,7 +1448,7 @@ function ShelvingManager({ warehouse }) {
     if (!currentModules.length) {
       const { data: created, error: createError } = await supabase
         .from('almacen_modulos')
-        .insert({ almacen_id: warehouse.id, nombre: 'Módulo 1', orden: 1 })
+        .insert({ almacen_id: warehouse.id, nombre: 'Módulo 1', orden: 1, canal_led: 1 })
         .select()
         .single();
       if (createError) {
@@ -1178,7 +1481,12 @@ function ShelvingManager({ warehouse }) {
     setShelves(
       (shelfData || []).reduce((acc, shelf) => {
         const module = currentModules.find((item) => item.id === shelf.modulo_id);
-        acc[`${shelf.modulo_id}-${shelf.numero}`] = normalizeShelfRecord(shelf, module?.ancho_estante_cm || defaultWidthCm);
+        acc[`${shelf.modulo_id}-${shelf.numero}`] = normalizeShelfRecord(
+          shelf,
+          module?.ancho_estante_cm || defaultWidthCm,
+          module,
+          loadedControllersById
+        );
         return acc;
       }, {})
     );
@@ -1208,6 +1516,7 @@ function ShelvingManager({ warehouse }) {
         almacen_id: warehouse.id,
         nombre: nextModuleName(modules.length),
         orden: modules.length + 1,
+        canal_led: 1,
       })
       .select()
       .single();
@@ -1276,6 +1585,28 @@ function ShelvingManager({ warehouse }) {
     setError('');
   }
 
+  async function updateModuleHardware(moduleId, patch) {
+    if (!editingModuleIds.includes(moduleId)) return;
+    const record = {
+      ...patch,
+      canal_led: patch.canal_led ? Math.min(4, Math.max(1, toNumber(patch.canal_led, 1))) : patch.canal_led,
+    };
+    const { error: updateError } = await supabase
+      .from('almacen_modulos')
+      .update(record)
+      .eq('id', moduleId);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+
+    setModules((current) => current.map((module) => (
+      module.id === moduleId ? { ...module, ...record } : module
+    )));
+    setError('');
+  }
+
   async function removeModule() {
     if (!selectedModuleIds.length) return;
     if (selectedModuleIds.length >= modules.length) {
@@ -1308,7 +1639,7 @@ function ShelvingManager({ warehouse }) {
     let payload;
 
     try {
-      payload = buildShelfPayload(current, patch, moduleShelfWidth(module || {}));
+      payload = buildShelfPayload(current, patch, moduleShelfWidth(module || {}), module, controllersById);
     } catch (validationError) {
       setError(validationError.message);
       return;
@@ -1342,9 +1673,52 @@ function ShelvingManager({ warehouse }) {
 
   async function saveSelectedModules() {
     if (!selectedModuleIds.length) return;
+    for (const moduleId of selectedModuleIds) {
+      const module = modules.find((item) => item.id === moduleId);
+      if (!module) continue;
+      for (let numero = 1; numero <= 8; numero += 1) {
+        const key = `${moduleId}-${numero}`;
+        const current = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module), module, controllersById);
+        await saveShelf(moduleId, numero, { cajones: current.cajones });
+      }
+    }
     setEditingModuleIds((current) => current.filter((id) => !selectedModuleIds.includes(id)));
     setSelectedModuleIds([]);
     setError('');
+  }
+
+  function addBoxToShelf(moduleId, numero, boxTypeId) {
+    const boxType = boxTypes.find((item) => item.id === boxTypeId);
+    if (!boxType) return;
+    const module = modules.find((item) => item.id === moduleId);
+    const key = `${moduleId}-${numero}`;
+    const current = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module || {}), module, controllersById);
+    const nextCajones = [
+      ...current.cajones,
+      {
+        posicion: current.cajones.length + 1,
+        cubeta_id: boxType.id,
+        cubeta_codigo: boxType.codigo,
+        nombre: boxType.nombre,
+        ancho_cm: toNumber(boxType.ancho_cm, 0),
+      },
+    ].slice(0, 8);
+
+    saveShelf(moduleId, numero, {
+      cantidad_baldas: nextCajones.length,
+      cajones: nextCajones,
+    });
+  }
+
+  function removeLastBoxFromShelf(moduleId, numero) {
+    const module = modules.find((item) => item.id === moduleId);
+    const key = `${moduleId}-${numero}`;
+    const current = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module || {}), module, controllersById);
+    const nextCajones = current.cajones.slice(0, -1).map((item, index) => ({ ...item, posicion: index + 1 }));
+    saveShelf(moduleId, numero, {
+      cantidad_baldas: nextCajones.length,
+      cajones: nextCajones,
+    });
   }
 
   return (
@@ -1388,6 +1762,13 @@ function ShelvingManager({ warehouse }) {
         </div>
       </div>
 
+      <div className="catalog-strip">
+        <strong>Catálogo de cubetas</strong>
+        {boxTypes.length ? boxTypes.map((boxType) => (
+          <span key={boxType.id}>{boxType.codigo} · {boxType.nombre} · {boxType.ancho_cm} cm</span>
+        )) : <span>Crea cubetas en el panel Catálogo antes de construir las baldas.</span>}
+      </div>
+
       {error && <div className="error-box">{error}</div>}
 
       <div className="rack-grid">
@@ -1398,18 +1779,43 @@ function ShelvingManager({ warehouse }) {
             </button>
             <div className="rack-title">
               <strong>Módulo {moduleIndex + 1}</strong>
-              <label className="module-width-field">
-                Ancho módulo
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={module.ancho_estante_cm ?? ''}
-                  onChange={(event) => updateModuleWidth(module.id, event.target.value.replace(/[^0-9.]/g, ''))}
-                  placeholder={`${defaultWidthCm}`}
-                  disabled={!editingModuleIds.includes(module.id)}
-                />
-                <span>cm</span>
-              </label>
+              <div className="module-hardware-fields">
+                <label className="module-width-field">
+                  Ancho total
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={module.ancho_estante_cm ?? ''}
+                    onChange={(event) => updateModuleWidth(module.id, event.target.value.replace(/[^0-9.]/g, ''))}
+                    placeholder={`${defaultWidthCm}`}
+                    disabled={!editingModuleIds.includes(module.id)}
+                  />
+                  <span>cm</span>
+                </label>
+                <label>
+                  Controlador
+                  <select
+                    value={module.controlador_id || ''}
+                    onChange={(event) => updateModuleHardware(module.id, { controlador_id: event.target.value || null })}
+                    disabled={!editingModuleIds.includes(module.id)}
+                  >
+                    <option value="">Sin controlador</option>
+                    {controllers.map((controller) => (
+                      <option key={controller.id} value={controller.id}>{controller.nombre} · {controller.ip}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Canal
+                  <select
+                    value={module.canal_led || 1}
+                    onChange={(event) => updateModuleHardware(module.id, { canal_led: event.target.value })}
+                    disabled={!editingModuleIds.includes(module.id)}
+                  >
+                    {[1, 2, 3, 4].map((channel) => <option key={channel} value={channel}>Canal {channel}</option>)}
+                  </select>
+                </label>
+              </div>
             </div>
             <div className="rack-frame">
               {Array.from({ length: 8 }, (_, index) => {
@@ -1419,39 +1825,35 @@ function ShelvingManager({ warehouse }) {
                 const value = clampShelfCount(record.cantidad_baldas);
                 const totalWidth = record.cajones.reduce((sum, item) => sum + toNumber(item.ancho_cm, 0), 0);
                 const widthLimit = moduleShelfWidth(module);
+                const freeWidth = Math.max(0, widthLimit - totalWidth);
                 const widthOk = totalWidth <= widthLimit;
                 return (
                   <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'}`} key={key}>
                     <span>E{numero}</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-8]"
-                      maxLength={1}
-                      value={value}
-                      onChange={(event) => saveShelf(module.id, numero, { cantidad_baldas: event.target.value.replace(/[^0-8]/g, '').slice(0, 1) })}
-                      disabled={!editingModuleIds.includes(module.id)}
-                      aria-label={`Baldas estante ${numero}`}
-                    />
-                    <input
-                      className="ip-field"
-                      type="text"
-                      value={record.esp32_ip}
-                      onChange={(event) => saveShelf(module.id, numero, { esp32_ip: event.target.value })}
-                      disabled={!editingModuleIds.includes(module.id)}
-                      placeholder="IP ESP32"
-                      aria-label={`IP ESP32 estante ${numero}`}
-                    />
-                    <input
-                      className="led-total-field"
-                      type="text"
-                      inputMode="numeric"
-                      value={record.total_leds}
-                      onChange={(event) => saveShelf(module.id, numero, { total_leds: event.target.value.replace(/\D/g, '') })}
-                      disabled={!editingModuleIds.includes(module.id)}
-                      placeholder="LEDs"
-                      aria-label={`LEDs totales estante ${numero}`}
-                    />
+                    <select
+                      className="box-type-select"
+                      disabled={!editingModuleIds.includes(module.id) || !boxTypes.length || value >= 8}
+                      value=""
+                      onChange={(event) => {
+                        addBoxToShelf(module.id, numero, event.target.value);
+                        event.target.value = '';
+                      }}
+                      aria-label={`Agregar cubeta en estante ${numero}`}
+                    >
+                      <option value="">+ Cubeta</option>
+                      {boxTypes.map((boxType) => (
+                        <option key={boxType.id} value={boxType.id}>{boxType.codigo} · {boxType.ancho_cm} cm</option>
+                      ))}
+                    </select>
+                    <button
+                      className="icon-button shelf-remove-box"
+                      type="button"
+                      onClick={() => removeLastBoxFromShelf(module.id, numero)}
+                      disabled={!editingModuleIds.includes(module.id) || !value}
+                      aria-label={`Quitar última cubeta del estante ${numero}`}
+                    >
+                      <X size={15} />
+                    </button>
                     <div className="shelf-preview physical-preview">
                       {record.cajones.map((cajon, shelfIndex) => (
                         <div
@@ -1459,25 +1861,15 @@ function ShelvingManager({ warehouse }) {
                           key={`${key}-${cajon.posicion}`}
                           style={{ width: `${Math.max(4, (toNumber(cajon.ancho_cm, 0) / widthLimit) * 100)}%` }}
                         >
-                          <i>C{shelfIndex + 1}</i>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            value={cajon.ancho_cm}
-                            onChange={(event) => {
-                              const nextCajones = record.cajones.map((item) => (
-                                item.posicion === cajon.posicion
-                                  ? { ...item, ancho_cm: event.target.value.replace(/[^0-9.]/g, '') }
-                                  : item
-                              ));
-                              saveShelf(module.id, numero, { cajones: nextCajones });
-                            }}
-                            disabled={!editingModuleIds.includes(module.id)}
-                            aria-label={`Ancho C${shelfIndex + 1} en centímetros`}
-                          />
-                          <small>{cajon.startLed}+{cajon.ledCount}</small>
+                          <i>{cajon.cubeta_codigo || `C${shelfIndex + 1}`}</i>
+                          <small>{cajon.ancho_cm} cm · LED {cajon.startLed}+{cajon.ledCount}</small>
                         </div>
                       ))}
+                      {freeWidth > 0 && (
+                        <div className="physical-free-space" style={{ width: `${(freeWidth / widthLimit) * 100}%` }}>
+                          Libre: {freeWidth} cm
+                        </div>
+                      )}
                     </div>
                     <small className="row-measure">{totalWidth}/{widthLimit} cm</small>
                   </div>
@@ -1542,6 +1934,14 @@ function WarehouseWorkspace({ warehouse }) {
           <LayoutGrid size={17} />
           Configuración estantería
         </button>
+        <button className={tab === 'iot' ? 'active' : ''} onClick={() => setTab('iot')}>
+          <Cpu size={17} />
+          Controladores IoT
+        </button>
+        <button className={tab === 'cubetas' ? 'active' : ''} onClick={() => setTab('cubetas')}>
+          <Boxes size={17} />
+          Catálogo cubetas
+        </button>
         <button className="import-tab" type="button" onClick={() => fileInputRef.current?.click()}>
           <FileSpreadsheet size={17} />
           Importar
@@ -1560,6 +1960,8 @@ function WarehouseWorkspace({ warehouse }) {
       {tab === 'articulos' && <ArticleManager warehouse={warehouse} refreshKey={articleRefreshKey} />}
       {tab === 'usuarios' && <OperatorsManager warehouse={warehouse} />}
       {tab === 'estanteria' && <ShelvingManager warehouse={warehouse} />}
+      {tab === 'iot' && <IoTControllersManager warehouse={warehouse} />}
+      {tab === 'cubetas' && <BoxCatalogManager warehouse={warehouse} />}
     </>
   );
 }

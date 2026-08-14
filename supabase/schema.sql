@@ -44,18 +44,43 @@ create table if not exists public.almacen_operadores (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.almacen_iot_controladores (
+  id uuid primary key default gen_random_uuid(),
+  almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
+  nombre text not null,
+  ip text not null,
+  tipo_tira text not null default 'WS2812B',
+  leds_por_metro integer not null default 60 check (leds_por_metro > 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.almacen_cubetas_catalogo (
+  id uuid primary key default gen_random_uuid(),
+  almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
+  codigo text not null,
+  nombre text not null,
+  ancho_cm numeric not null check (ancho_cm > 0),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.almacen_modulos (
   id uuid primary key default gen_random_uuid(),
   almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
   nombre text not null,
   orden integer not null default 1,
   ancho_estante_cm numeric,
+  controlador_id uuid references public.almacen_iot_controladores(id) on delete set null,
+  canal_led integer not null default 1 check (canal_led between 1 and 4),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.almacen_modulos
-  add column if not exists ancho_estante_cm numeric;
+  add column if not exists ancho_estante_cm numeric,
+  add column if not exists controlador_id uuid references public.almacen_iot_controladores(id) on delete set null,
+  add column if not exists canal_led integer not null default 1;
 
 create table if not exists public.almacen_estantes (
   id uuid primary key default gen_random_uuid(),
@@ -78,6 +103,8 @@ create unique index if not exists almacen_bases_nombre_key on public.almacen_bas
 create unique index if not exists almacen_articulos_codigo_key on public.almacen_articulos (almacen_id, codigo_articulo);
 create unique index if not exists almacen_articulos_sku_key on public.almacen_articulos (almacen_id, sku);
 create unique index if not exists almacen_operadores_email_key on public.almacen_operadores (almacen_id, email);
+create unique index if not exists almacen_iot_controladores_nombre_key on public.almacen_iot_controladores (almacen_id, nombre);
+create unique index if not exists almacen_cubetas_catalogo_codigo_key on public.almacen_cubetas_catalogo (almacen_id, codigo);
 create unique index if not exists almacen_modulos_orden_key on public.almacen_modulos (almacen_id, orden);
 create unique index if not exists almacen_estantes_modulo_numero_key on public.almacen_estantes (modulo_id, numero);
 
@@ -104,6 +131,16 @@ create trigger almacen_operadores_set_updated_at
 before update on public.almacen_operadores
 for each row execute function public.set_updated_at();
 
+drop trigger if exists almacen_iot_controladores_set_updated_at on public.almacen_iot_controladores;
+create trigger almacen_iot_controladores_set_updated_at
+before update on public.almacen_iot_controladores
+for each row execute function public.set_updated_at();
+
+drop trigger if exists almacen_cubetas_catalogo_set_updated_at on public.almacen_cubetas_catalogo;
+create trigger almacen_cubetas_catalogo_set_updated_at
+before update on public.almacen_cubetas_catalogo
+for each row execute function public.set_updated_at();
+
 update public.almacen_operadores
 set rol = 'operario'
 where rol = 'operador';
@@ -125,12 +162,16 @@ for each row execute function public.set_updated_at();
 alter table public.almacen_bases enable row level security;
 alter table public.almacen_articulos enable row level security;
 alter table public.almacen_operadores enable row level security;
+alter table public.almacen_iot_controladores enable row level security;
+alter table public.almacen_cubetas_catalogo enable row level security;
 alter table public.almacen_modulos enable row level security;
 alter table public.almacen_estantes enable row level security;
 
 drop policy if exists "Usuarios autenticados gestionan bases de almacen" on public.almacen_bases;
 drop policy if exists "Usuarios autenticados gestionan articulos de almacen" on public.almacen_articulos;
 drop policy if exists "Usuarios autenticados gestionan operadores de almacen" on public.almacen_operadores;
+drop policy if exists "Usuarios autenticados gestionan controladores iot de almacen" on public.almacen_iot_controladores;
+drop policy if exists "Usuarios autenticados gestionan catalogo de cubetas" on public.almacen_cubetas_catalogo;
 drop policy if exists "Usuarios autenticados gestionan modulos de almacen" on public.almacen_modulos;
 drop policy if exists "Usuarios autenticados gestionan estantes de almacen" on public.almacen_estantes;
 
@@ -148,6 +189,18 @@ with check (true);
 
 create policy "Usuarios autenticados gestionan operadores de almacen"
 on public.almacen_operadores for all
+to authenticated
+using (true)
+with check (true);
+
+create policy "Usuarios autenticados gestionan controladores iot de almacen"
+on public.almacen_iot_controladores for all
+to authenticated
+using (true)
+with check (true);
+
+create policy "Usuarios autenticados gestionan catalogo de cubetas"
+on public.almacen_cubetas_catalogo for all
 to authenticated
 using (true)
 with check (true);

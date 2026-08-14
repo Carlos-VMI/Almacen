@@ -544,6 +544,39 @@ select:focus {
   gap: 10px;
 }
 
+.cards-list {
+  display: grid;
+  gap: 10px;
+}
+
+.config-card {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 13px 14px;
+}
+
+.config-card div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.config-card strong {
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.config-card span,
+.config-card small {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .search-box {
   background: #f8fafc;
   border: 1px solid #cbd5e1;
@@ -839,9 +872,9 @@ tr:last-child td {
 }
 
 .rack-title {
-  align-items: end;
+  align-items: start;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(120px, 150px);
+  grid-template-columns: minmax(84px, 0.25fr) minmax(0, 1fr);
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
@@ -871,7 +904,7 @@ tr:last-child td {
   align-items: center;
   display: grid;
   gap: 6px;
-  grid-template-columns: 22px 34px minmax(86px, 0.45fr) 58px minmax(0, 1fr) 72px;
+  grid-template-columns: 22px minmax(88px, 130px) 34px minmax(0, 1fr) 78px;
 }
 
 .rack-row.invalid {
@@ -895,20 +928,38 @@ tr:last-child td {
   text-align: center;
 }
 
-.rack-row .ip-field {
-  font-size: 11px;
-  text-align: left;
-}
-
-.rack-row .led-total-field {
-  font-size: 11px;
-}
-
 .row-measure {
   color: #64748b;
   font-size: 10px;
   font-weight: 800;
   text-align: right;
+}
+
+.catalog-strip {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+}
+
+.catalog-strip strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.catalog-strip span {
+  background: #ffffff;
+  border: 1px solid #dbe4ef;
+  border-radius: 999px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 8px;
 }
 
 .inline-setting {
@@ -929,6 +980,23 @@ tr:last-child td {
   display: grid;
   gap: 4px;
   grid-template-columns: minmax(0, 1fr) 46px auto;
+}
+
+.module-hardware-fields {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(140px, 0.7fr) minmax(170px, 1fr) minmax(82px, 0.4fr);
+}
+
+.module-hardware-fields label {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.module-hardware-fields select {
+  min-height: 31px;
+  padding: 4px 6px;
 }
 
 .module-width-field input {
@@ -1061,6 +1129,32 @@ tr:last-child td {
   font-weight: 800;
   line-height: 1;
   text-align: center;
+}
+
+.physical-free-space {
+  align-items: center;
+  background: repeating-linear-gradient(45deg, #f8fafc 0, #f8fafc 5px, #e2e8f0 5px, #e2e8f0 9px);
+  border: 1px dashed #cbd5e1;
+  border-radius: 3px;
+  color: #64748b;
+  display: flex;
+  font-size: 10px;
+  font-weight: 900;
+  justify-content: center;
+  min-width: 40px;
+  padding: 3px 5px;
+  white-space: nowrap;
+}
+
+.box-type-select {
+  font-size: 11px;
+  min-height: 34px;
+  padding: 4px 6px;
+}
+
+.shelf-remove-box {
+  height: 34px;
+  width: 34px;
 }
 
 .rack-card.locked .shelf-preview i {
