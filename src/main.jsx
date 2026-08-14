@@ -63,10 +63,11 @@ function readJsonArray(value) {
   return [];
 }
 
-function calculateLedLayout({ cajones, shelfWidthCm, controller, channel, shelfNumber = 1 }) {
+function calculateLedLayout({ cajones, shelfWidthCm, controller, channel, shelfNumber = 1, moduleBaseOffsetCm = 0 }) {
   const width = Math.max(1, toNumber(shelfWidthCm, DEFAULT_SHELF_WIDTH_CM));
   const density = Math.max(0, toNumber(controller?.leds_por_metro, DEFAULT_LED_DENSITY)) / 100;
-  const shelfOffsetCm = Math.max(0, toNumber(shelfNumber, 1) - 1) * width;
+  const shelfOffsetCm = Math.max(0, toNumber(moduleBaseOffsetCm, 0))
+    + (Math.max(0, toNumber(shelfNumber, 1) - 1) * width);
   let cursorCm = 0;
 
   return cajones.map((cajon, index) => {
@@ -121,7 +122,7 @@ function normalizeShelfRecord(row, shelfWidthCm, module = {}, controllersById = 
   };
 }
 
-function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controllersById = new Map(), shelfNumber = 1) {
+function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controllersById = new Map(), shelfNumber = 1, moduleBaseOffsetCm = 0) {
   const base = {
     ...current,
     ...patch,
@@ -159,6 +160,7 @@ function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controller
       controller: controllersById.get(module?.controlador_id) ?? null,
       channel: module?.canal_led ?? 1,
       shelfNumber,
+      moduleBaseOffsetCm,
     }),
   };
 }
@@ -1386,7 +1388,6 @@ function ShelvingManager({ warehouse }) {
   const [shelves, setShelves] = useState({});
   const [controllers, setControllers] = useState([]);
   const [boxTypes, setBoxTypes] = useState([]);
-  const [selectedModuleIds, setSelectedModuleIds] = useState([]);
   const [editingModuleIds, setEditingModuleIds] = useState([]);
   const [error, setError] = useState('');
 
@@ -1467,7 +1468,6 @@ function ShelvingManager({ warehouse }) {
     }
 
     setModules(currentModules);
-    setSelectedModuleIds((current) => current.filter((id) => currentModules.some((module) => module.id === id)));
     setEditingModuleIds((current) => current.filter((id) => currentModules.some((module) => module.id === id)));
     setShelves(
       (shelfData || []).reduce((acc, shelf) => {
@@ -1535,10 +1535,20 @@ function ShelvingManager({ warehouse }) {
     return true;
   }
 
-  function toggleModule(id) {
-    setSelectedModuleIds((current) => (
-      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
-    ));
+  function moduleBaseOffsetCm(moduleId, moduleList = modules) {
+    const module = moduleList.find((item) => item.id === moduleId);
+    if (!module?.controlador_id) return 0;
+    const channel = toNumber(module.canal_led, 1);
+
+    return [...moduleList]
+      .filter((item) => (
+        item.id !== module.id
+        && item.controlador_id === module.controlador_id
+        && toNumber(item.canal_led, 1) === channel
+        && toNumber(item.orden, 0) < toNumber(module.orden, 0)
+      ))
+      .sort((a, b) => toNumber(a.orden, 0) - toNumber(b.orden, 0))
+      .reduce((sum, item) => sum + (moduleShelfWidth(item) * 8), 0);
   }
 
   async function updateModuleWidth(moduleId, value) {
@@ -1582,39 +1592,47 @@ function ShelvingManager({ warehouse }) {
     setError('');
   }
 
-  async function removeModule() {
-    if (!selectedModuleIds.length) return;
-    if (selectedModuleIds.length >= modules.length) {
+  async function removeModule(moduleId) {
+    if (!moduleId) return;
+    if (modules.length <= 1) {
       setError('Debe quedar al menos un módulo configurado.');
       return;
     }
-    if (!window.confirm(`Quitar ${selectedModuleIds.length} módulos seleccionados? Se perderá su configuración de estantes.`)) return;
-    const { error: shelfDeleteError } = await supabase.from('almacen_estantes').delete().in('modulo_id', selectedModuleIds);
+    const module = modules.find((item) => item.id === moduleId);
+    if (!window.confirm(`Quitar ${module?.nombre || 'este módulo'}? Se perderá su configuración de estantes.`)) return;
+    const { error: shelfDeleteError } = await supabase.from('almacen_estantes').delete().eq('modulo_id', moduleId);
     if (shelfDeleteError) {
       setError(shelfDeleteError.message);
       return;
     }
 
-    const { error: deleteError } = await supabase.from('almacen_modulos').delete().in('id', selectedModuleIds);
+    const { error: deleteError } = await supabase.from('almacen_modulos').delete().eq('id', moduleId);
     if (deleteError) {
       setError(deleteError.message);
       return;
     }
-    setSelectedModuleIds([]);
-    setEditingModuleIds((current) => current.filter((id) => !selectedModuleIds.includes(id)));
+    setEditingModuleIds((current) => current.filter((id) => id !== moduleId));
     await normalizeModuleOrder();
     loadLayout();
   }
 
-  async function saveShelf(moduleId, numero, patch) {
-    if (!editingModuleIds.includes(moduleId)) return;
+  async function saveShelf(moduleId, numero, patch, options = {}) {
+    if (!options.force && !editingModuleIds.includes(moduleId)) return;
     const module = modules.find((item) => item.id === moduleId);
     const key = `${moduleId}-${numero}`;
     const current = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module || {}));
     let payload;
 
     try {
-      payload = buildShelfPayload(current, patch, moduleShelfWidth(module || {}), module, controllersById, numero);
+      payload = buildShelfPayload(
+        current,
+        patch,
+        moduleShelfWidth(module || {}),
+        module,
+        controllersById,
+        numero,
+        moduleBaseOffsetCm(moduleId)
+      );
     } catch (validationError) {
       setError(validationError.message);
       return;
@@ -1640,25 +1658,32 @@ function ShelvingManager({ warehouse }) {
     setError('');
   }
 
-  function editSelectedModules() {
-    if (!selectedModuleIds.length) return;
-    setEditingModuleIds((current) => Array.from(new Set([...current, ...selectedModuleIds])));
+  function editModule(moduleId) {
+    setEditingModuleIds((current) => Array.from(new Set([...current, moduleId])));
     setError('');
   }
 
-  async function saveSelectedModules() {
-    if (!selectedModuleIds.length) return;
-    for (const moduleId of selectedModuleIds) {
-      const module = modules.find((item) => item.id === moduleId);
-      if (!module) continue;
+  async function saveModule(moduleId) {
+    const module = modules.find((item) => item.id === moduleId);
+    if (!module) return;
+
+    const relatedModules = modules
+      .filter((item) => (
+        item.controlador_id
+        && item.controlador_id === module.controlador_id
+        && toNumber(item.canal_led, 1) === toNumber(module.canal_led, 1)
+      ))
+      .sort((a, b) => toNumber(a.orden, 0) - toNumber(b.orden, 0));
+    const modulesToSave = relatedModules.length ? relatedModules : [module];
+
+    for (const moduleToSave of modulesToSave) {
       for (let numero = 1; numero <= 8; numero += 1) {
-        const key = `${moduleId}-${numero}`;
-        const current = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module), module, controllersById);
-        await saveShelf(moduleId, numero, { cajones: current.cajones });
+        const key = `${moduleToSave.id}-${numero}`;
+        const current = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(moduleToSave), moduleToSave, controllersById);
+        await saveShelf(moduleToSave.id, numero, { cajones: current.cajones }, { force: true });
       }
     }
-    setEditingModuleIds((current) => current.filter((id) => !selectedModuleIds.includes(id)));
-    setSelectedModuleIds([]);
+    setEditingModuleIds((current) => current.filter((id) => id !== moduleId));
     setError('');
   }
 
@@ -1704,21 +1729,9 @@ function ShelvingManager({ warehouse }) {
           <h2>Layout de módulos y baldas</h2>
         </div>
         <div className="module-actions">
-          <button className="secondary-button" type="button" onClick={editSelectedModules} disabled={!selectedModuleIds.length}>
-            <Pencil size={18} />
-            Editar
-          </button>
-          <button className="primary-button" type="button" onClick={saveSelectedModules} disabled={!selectedModuleIds.some((id) => editingModuleIds.includes(id))}>
-            <Save size={18} />
-            Guardar
-          </button>
           <button className="primary-button" type="button" onClick={addModule}>
             <Plus size={18} />
             Añadir módulo
-          </button>
-          <button className="secondary-button danger-text" type="button" onClick={removeModule} disabled={!selectedModuleIds.length || modules.length <= 1}>
-            <Trash2 size={18} />
-            Quitar módulo
           </button>
         </div>
       </div>
@@ -1733,11 +1746,10 @@ function ShelvingManager({ warehouse }) {
       {error && <div className="error-box">{error}</div>}
 
       <div className="rack-grid">
-        {modules.map((module, moduleIndex) => (
-          <article className={`rack-card ${editingModuleIds.includes(module.id) ? 'editing' : 'locked'}`} key={module.id}>
-            <button className="module-check" type="button" onClick={() => toggleModule(module.id)} aria-label={`Seleccionar Módulo ${moduleIndex + 1}`}>
-              {selectedModuleIds.includes(module.id) && <span />}
-            </button>
+        {modules.map((module, moduleIndex) => {
+          const isEditing = editingModuleIds.includes(module.id);
+          return (
+          <article className={`rack-card ${isEditing ? 'editing' : 'locked'}`} key={module.id}>
             <div className="rack-title">
               <strong>Módulo {moduleIndex + 1}</strong>
               <div className="module-hardware-fields">
@@ -1749,7 +1761,7 @@ function ShelvingManager({ warehouse }) {
                     value={module.ancho_estante_cm ?? ''}
                     onChange={(event) => updateModuleWidth(module.id, event.target.value.replace(/[^0-9.]/g, ''))}
                     placeholder={`${DEFAULT_SHELF_WIDTH_CM}`}
-                    disabled={!editingModuleIds.includes(module.id)}
+                    disabled={!isEditing}
                   />
                   <span>cm</span>
                 </label>
@@ -1758,11 +1770,11 @@ function ShelvingManager({ warehouse }) {
                   <select
                     value={module.controlador_id || ''}
                     onChange={(event) => updateModuleHardware(module.id, { controlador_id: event.target.value || null })}
-                    disabled={!editingModuleIds.includes(module.id)}
+                    disabled={!isEditing}
                   >
                     <option value="">Sin controlador</option>
                     {controllers.map((controller) => (
-                      <option key={controller.id} value={controller.id}>{controller.nombre} · {controller.ip}</option>
+                      <option key={controller.id} value={controller.id}>{controller.nombre}</option>
                     ))}
                   </select>
                 </label>
@@ -1771,11 +1783,25 @@ function ShelvingManager({ warehouse }) {
                   <select
                     value={module.canal_led || 1}
                     onChange={(event) => updateModuleHardware(module.id, { canal_led: event.target.value })}
-                    disabled={!editingModuleIds.includes(module.id)}
+                    disabled={!isEditing}
                   >
-                    {[1, 2, 3, 4].map((channel) => <option key={channel} value={channel}>Canal {channel}</option>)}
+                    {[1, 2, 3, 4].map((channel) => <option key={channel} value={channel}>C{channel}</option>)}
                   </select>
                 </label>
+              </div>
+              <div className="module-card-actions">
+                {isEditing ? (
+                  <button className="icon-button" type="button" onClick={() => saveModule(module.id)} aria-label={`Guardar Módulo ${moduleIndex + 1}`}>
+                    <Save size={17} />
+                  </button>
+                ) : (
+                  <button className="icon-button" type="button" onClick={() => editModule(module.id)} aria-label={`Editar Módulo ${moduleIndex + 1}`}>
+                    <Pencil size={17} />
+                  </button>
+                )}
+                <button className="icon-button danger" type="button" onClick={() => removeModule(module.id)} disabled={modules.length <= 1} aria-label={`Quitar Módulo ${moduleIndex + 1}`}>
+                  <Trash2 size={17} />
+                </button>
               </div>
             </div>
             <div className="rack-frame">
@@ -1793,7 +1819,7 @@ function ShelvingManager({ warehouse }) {
                     <span>E{numero}</span>
                     <select
                       className="box-type-select"
-                      disabled={!editingModuleIds.includes(module.id) || !boxTypes.length || value >= 8}
+                      disabled={!isEditing || !boxTypes.length || value >= 8}
                       value=""
                       onChange={(event) => {
                         addBoxToShelf(module.id, numero, event.target.value);
@@ -1810,7 +1836,7 @@ function ShelvingManager({ warehouse }) {
                       className="icon-button shelf-remove-box"
                       type="button"
                       onClick={() => removeLastBoxFromShelf(module.id, numero)}
-                      disabled={!editingModuleIds.includes(module.id) || !value}
+                      disabled={!isEditing || !value}
                       aria-label={`Quitar última cubeta del estante ${numero}`}
                     >
                       <X size={15} />
@@ -1832,13 +1858,13 @@ function ShelvingManager({ warehouse }) {
                         </div>
                       )}
                     </div>
-                    <small className="row-measure">{totalWidth}/{widthLimit} cm</small>
                   </div>
                 );
               })}
             </div>
           </article>
-        ))}
+        );
+        })}
       </div>
     </section>
   );

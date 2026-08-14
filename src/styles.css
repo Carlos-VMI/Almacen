@@ -872,13 +872,12 @@ tr:last-child td {
 }
 
 .rack-title {
-  align-items: start;
+  align-items: center;
   display: grid;
-  grid-template-columns: minmax(84px, 0.25fr) minmax(0, 1fr);
+  grid-template-columns: minmax(84px, 0.2fr) minmax(0, 1fr) auto;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 14px;
-  padding-right: 28px;
 }
 
 .rack-title strong {
@@ -904,7 +903,7 @@ tr:last-child td {
   align-items: center;
   display: grid;
   gap: 6px;
-  grid-template-columns: 22px minmax(88px, 130px) 34px minmax(0, 1fr) 78px;
+  grid-template-columns: 22px minmax(70px, 92px) 30px minmax(0, 1fr);
 }
 
 .rack-row.invalid {
@@ -926,13 +925,6 @@ tr:last-child td {
   min-height: 34px;
   padding: 4px;
   text-align: center;
-}
-
-.row-measure {
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 800;
-  text-align: right;
 }
 
 .catalog-strip {
@@ -985,7 +977,7 @@ tr:last-child td {
 .module-hardware-fields {
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(140px, 0.7fr) minmax(170px, 1fr) minmax(82px, 0.4fr);
+  grid-template-columns: minmax(112px, 0.55fr) minmax(132px, 0.9fr) minmax(70px, 0.35fr);
 }
 
 .module-hardware-fields label {
@@ -997,6 +989,12 @@ tr:last-child td {
 .module-hardware-fields select {
   min-height: 31px;
   padding: 4px 6px;
+}
+
+.module-card-actions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
 }
 
 .module-width-field input {
@@ -1019,46 +1017,6 @@ tr:last-child td {
   cursor: default !important;
   pointer-events: none;
   user-select: none;
-}
-
-.module-check {
-  align-items: center;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  display: inline-flex;
-  height: 16px;
-  justify-content: center;
-  line-height: 0;
-  padding: 0;
-  position: absolute;
-  right: 14px;
-  top: 14px;
-  width: 16px;
-  z-index: 2;
-  caret-color: transparent;
-  cursor: pointer !important;
-  user-select: none;
-}
-
-.module-check:disabled {
-  cursor: default !important;
-  opacity: 0.75;
-}
-
-.module-check * {
-  caret-color: transparent;
-  cursor: inherit !important;
-  user-select: none;
-}
-
-.module-check span {
-  background: #0b74bd;
-  border-radius: 999px;
-  display: block;
-  height: 8px;
-  margin: 0;
-  width: 8px;
 }
 
 .shelf-preview {
@@ -1149,12 +1107,12 @@ tr:last-child td {
 .box-type-select {
   font-size: 11px;
   min-height: 34px;
-  padding: 4px 6px;
+  padding: 4px 5px;
 }
 
 .shelf-remove-box {
   height: 34px;
-  width: 34px;
+  width: 30px;
 }
 
 .rack-card.locked .shelf-preview i {
