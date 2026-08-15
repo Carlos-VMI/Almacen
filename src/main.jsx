@@ -39,7 +39,7 @@ const emptyArticle = {
   descripcion: '',
   sufijos: [{ sufijo: '01', capacidad: '' }],
 };
-const emptyOperator = { nombre: '', email: '', rol: 'operario', pin: '', activo: true };
+const emptyOperator = { nombre: '', apellido: '', email: '', rol: 'operario', pin: '', activo: true };
 const emptyController = { nombre: '', ip: '', tipo_tira: 'WS2812B', leds_por_metro: DEFAULT_LED_DENSITY };
 const emptyBoxType = { codigo: '', nombre: '', ancho_cm: '' };
 const suffixOptions = ['01', '02', '03', '04'];
@@ -544,7 +544,7 @@ function Topbar({ session, selectedWarehouse, onBack }) {
           <Boxes size={22} />
         </div>
         <div>
-          <span className="eyebrow">Sistema de stock</span>
+          <span className="eyebrow">Smart WMS</span>
           <h1>{selectedWarehouse ? selectedWarehouse.nombre : 'Bases de datos'}</h1>
         </div>
       </div>
@@ -612,7 +612,7 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
       <section className="form-panel">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">Nueva base</span>
+            <span className="eyebrow">NUEVA BASE DE DATOS</span>
             <h2>{editing ? 'Editar almacén' : 'Crear almacén'}</h2>
           </div>
           {editing ? (
@@ -661,8 +661,8 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
       <section className="inventory-panel">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">Disponibles</span>
-            <h2>Base de datos creadas</h2>
+            <span className="eyebrow">DISPONIBLES</span>
+            <h2>Base de datos activas</h2>
           </div>
           <span className="counter-pill">{warehouses.length}</span>
         </div>
@@ -1075,7 +1075,8 @@ function OperatorsManager({ warehouse }) {
     const record = {
       almacen_id: warehouse.id,
       nombre: form.nombre.trim(),
-      email: form.email.trim(),
+      apellido: form.apellido.trim(),
+      email: form.email.trim() || null,
       rol: form.rol,
       pin: form.pin.trim(),
       activo: Boolean(form.activo),
@@ -1145,8 +1146,12 @@ function OperatorsManager({ warehouse }) {
             <input value={form.nombre} onChange={(event) => setForm({ ...form, nombre: event.target.value })} required />
           </label>
           <label>
+            Apellido
+            <input value={form.apellido || ''} onChange={(event) => setForm({ ...form, apellido: event.target.value })} />
+          </label>
+          <label>
             Email
-            <input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required />
+            <input type="email" value={form.email || ''} onChange={(event) => setForm({ ...form, email: event.target.value })} />
           </label>
           <label>
             Rol
@@ -1215,8 +1220,8 @@ function OperatorsManager({ warehouse }) {
                       aria-label={`Seleccionar ${operator.nombre}`}
                     />
                   </td>
-                  <td>{operator.nombre}</td>
-                  <td>{operator.email}</td>
+                  <td>{[operator.nombre, operator.apellido].filter(Boolean).join(' ')}</td>
+                  <td>{operator.email || ''}</td>
                   <td>{roleLabel(operator.rol)}</td>
                   <td>{operator.activo ? 'Activo' : 'Inactivo'}</td>
                   <td className="row-actions">
@@ -1474,7 +1479,7 @@ function BoxCatalogManager({ warehouse }) {
         <div className="panel-heading inventory-heading">
           <div>
             <span className="eyebrow">Cubetas</span>
-            <h2>Catálogo de Cubetas/Cajas</h2>
+            <h2>Catálogo de cubetas</h2>
           </div>
           <span className="counter-pill">{boxTypes.length}</span>
         </div>

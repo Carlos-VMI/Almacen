@@ -36,13 +36,18 @@ create table if not exists public.almacen_operadores (
   id uuid primary key default gen_random_uuid(),
   almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
   nombre text not null,
-  email text not null,
+  apellido text,
+  email text,
   rol text not null default 'operario',
   pin text,
   activo boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.almacen_operadores
+  add column if not exists apellido text,
+  alter column email drop not null;
 
 create table if not exists public.almacen_iot_controladores (
   id uuid primary key default gen_random_uuid(),

@@ -405,14 +405,13 @@ select:focus {
   background: #ffffff;
   border: 1px solid #cbd5e1;
   border-radius: 999px;
-  display: grid;
+  display: flex;
   flex: 0 0 auto;
   height: 18px;
   justify-content: center;
   line-height: 0;
   margin-top: 0;
   padding: 0;
-  place-items: center;
   position: absolute;
   right: 12px;
   top: 12px;
@@ -429,8 +428,10 @@ select:focus {
   display: block;
   height: 8px;
   margin: 0;
-  position: static;
-  transform: none;
+  left: 50%;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
   width: 8px;
   caret-color: transparent;
   cursor: inherit !important;
