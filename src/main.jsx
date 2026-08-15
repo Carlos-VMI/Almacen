@@ -95,8 +95,30 @@ function RoutingModeSelect({ value, disabled, muted, onChange }) {
   );
 }
 
+function useClickOutside(ref, onClickOutside, enabled = true) {
+  useEffect(() => {
+    if (!enabled) return undefined;
+
+    function handlePointerDown(event) {
+      if (!ref.current || ref.current.contains(event.target)) return;
+      onClickOutside(event);
+    }
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown, { passive: true });
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [enabled, onClickOutside, ref]);
+}
+
 function BoxTypeMenu({ disabled, boxTypes, onAdd, label, menuId, openDropdownId, setOpenDropdownId, openDirection = 'down' }) {
   const open = openDropdownId === menuId;
+  const menuRef = useRef(null);
+
+  useClickOutside(menuRef, () => setOpenDropdownId(null), open);
 
   function addBox(event, boxTypeId) {
     event.preventDefault();
@@ -105,7 +127,7 @@ function BoxTypeMenu({ disabled, boxTypes, onAdd, label, menuId, openDropdownId,
   }
 
   return (
-    <div className={`box-type-menu ${open ? 'open' : ''} ${openDirection === 'up' ? 'opens-up' : ''}`}>
+    <div ref={menuRef} className={`box-type-menu ${open ? 'open' : ''} ${openDirection === 'up' ? 'opens-up' : ''}`}>
       <button
         type="button"
         className="box-type-menu-trigger"
@@ -1971,7 +1993,7 @@ function ShelvingManager({ warehouse }) {
                 const freeWidth = Math.max(0, widthLimit - totalWidth);
                 const widthOk = totalWidth <= widthLimit;
                 return (
-                  <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'}`} key={key}>
+                  <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'} ${openDropdownId === key ? 'dropdown-active' : ''}`} key={key}>
                     <span>E{numero}</span>
                     {shelfAlerts[key] && (
                       <div className="shelf-toast" role="alert">
