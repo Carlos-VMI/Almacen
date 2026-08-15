@@ -1389,6 +1389,7 @@ function ShelvingManager({ warehouse }) {
   const [controllers, setControllers] = useState([]);
   const [boxTypes, setBoxTypes] = useState([]);
   const [editingModuleIds, setEditingModuleIds] = useState([]);
+  const [selectedShelfKey, setSelectedShelfKey] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -1570,6 +1571,25 @@ function ShelvingManager({ warehouse }) {
     setError('');
   }
 
+  async function updateModuleName(moduleId, value) {
+    if (!editingModuleIds.includes(moduleId)) return;
+    const nombre = value.trimStart();
+    setModules((current) => current.map((module) => (
+      module.id === moduleId ? { ...module, nombre } : module
+    )));
+
+    const { error: updateError } = await supabase
+      .from('almacen_modulos')
+      .update({ nombre: nombre.trim() || 'Módulo' })
+      .eq('id', moduleId);
+
+    if (updateError) {
+      setError(updateError.message);
+      return;
+    }
+    setError('');
+  }
+
   async function updateModuleHardware(moduleId, patch) {
     if (!editingModuleIds.includes(moduleId)) return;
     const record = {
@@ -1612,6 +1632,7 @@ function ShelvingManager({ warehouse }) {
       return;
     }
     setEditingModuleIds((current) => current.filter((id) => id !== moduleId));
+    setSelectedShelfKey((current) => (current.startsWith(`${moduleId}-`) ? '' : current));
     await normalizeModuleOrder();
     loadLayout();
   }
@@ -1728,12 +1749,6 @@ function ShelvingManager({ warehouse }) {
           <span className="eyebrow">Configuración de estantería</span>
           <h2>Layout de módulos y baldas</h2>
         </div>
-        <div className="module-actions">
-          <button className="primary-button" type="button" onClick={addModule}>
-            <Plus size={18} />
-            Añadir módulo
-          </button>
-        </div>
       </div>
 
       <div className="catalog-strip">
@@ -1751,10 +1766,32 @@ function ShelvingManager({ warehouse }) {
           return (
           <article className={`rack-card ${isEditing ? 'editing' : 'locked'}`} key={module.id}>
             <div className="rack-title">
-              <strong>Módulo {moduleIndex + 1}</strong>
+              <div className="rack-title-top">
+                <input
+                  className="module-name-input"
+                  value={module.nombre || `Módulo ${moduleIndex + 1}`}
+                  onChange={(event) => updateModuleName(module.id, event.target.value)}
+                  disabled={!isEditing}
+                  aria-label={`Nombre del módulo ${moduleIndex + 1}`}
+                />
+                <div className="module-card-actions">
+                  {isEditing ? (
+                    <button className="icon-button" type="button" onClick={() => saveModule(module.id)} aria-label={`Guardar ${module.nombre || `Módulo ${moduleIndex + 1}`}`}>
+                      <Save size={17} />
+                    </button>
+                  ) : (
+                    <button className="icon-button" type="button" onClick={() => editModule(module.id)} aria-label={`Editar ${module.nombre || `Módulo ${moduleIndex + 1}`}`}>
+                      <Pencil size={17} />
+                    </button>
+                  )}
+                  <button className="icon-button danger" type="button" onClick={() => removeModule(module.id)} disabled={modules.length <= 1} aria-label={`Quitar ${module.nombre || `Módulo ${moduleIndex + 1}`}`}>
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+              </div>
               <div className="module-hardware-fields">
                 <label className="module-width-field">
-                  Ancho total
+                  Ancho
                   <input
                     type="text"
                     inputMode="decimal"
@@ -1772,36 +1809,22 @@ function ShelvingManager({ warehouse }) {
                     onChange={(event) => updateModuleHardware(module.id, { controlador_id: event.target.value || null })}
                     disabled={!isEditing}
                   >
-                    <option value="">Sin controlador</option>
+                      <option value="">Sin controlador</option>
                     {controllers.map((controller) => (
                       <option key={controller.id} value={controller.id}>{controller.nombre}</option>
                     ))}
                   </select>
                 </label>
                 <label>
-                  Canal
+                  Puerto
                   <select
                     value={module.canal_led || 1}
                     onChange={(event) => updateModuleHardware(module.id, { canal_led: event.target.value })}
                     disabled={!isEditing}
                   >
-                    {[1, 2, 3, 4].map((channel) => <option key={channel} value={channel}>C{channel}</option>)}
+                    {[1, 2, 3, 4].map((channel) => <option key={channel} value={channel}>{channel}</option>)}
                   </select>
                 </label>
-              </div>
-              <div className="module-card-actions">
-                {isEditing ? (
-                  <button className="icon-button" type="button" onClick={() => saveModule(module.id)} aria-label={`Guardar Módulo ${moduleIndex + 1}`}>
-                    <Save size={17} />
-                  </button>
-                ) : (
-                  <button className="icon-button" type="button" onClick={() => editModule(module.id)} aria-label={`Editar Módulo ${moduleIndex + 1}`}>
-                    <Pencil size={17} />
-                  </button>
-                )}
-                <button className="icon-button danger" type="button" onClick={() => removeModule(module.id)} disabled={modules.length <= 1} aria-label={`Quitar Módulo ${moduleIndex + 1}`}>
-                  <Trash2 size={17} />
-                </button>
               </div>
             </div>
             <div className="rack-frame">
@@ -1814,8 +1837,15 @@ function ShelvingManager({ warehouse }) {
                 const widthLimit = moduleShelfWidth(module);
                 const freeWidth = Math.max(0, widthLimit - totalWidth);
                 const widthOk = totalWidth <= widthLimit;
+                const isShelfSelected = selectedShelfKey === key;
                 return (
-                  <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'}`} key={key}>
+                  <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'} ${isShelfSelected ? 'selected' : ''}`} key={key}>
+                    <button
+                      className="shelf-select-dot"
+                      type="button"
+                      onClick={() => setSelectedShelfKey(isShelfSelected ? '' : key)}
+                      aria-label={`Seleccionar estante ${numero}`}
+                    />
                     <span>E{numero}</span>
                     <select
                       className="box-type-select"
@@ -1846,14 +1876,14 @@ function ShelvingManager({ warehouse }) {
                         <div
                           className="physical-cajon"
                           key={`${key}-${cajon.posicion}`}
-                          style={{ width: `${Math.max(4, (toNumber(cajon.ancho_cm, 0) / widthLimit) * 100)}%` }}
+                          style={{ flexBasis: `${Math.max(4, (toNumber(cajon.ancho_cm, 0) / widthLimit) * 100)}%` }}
                         >
                           <i>{cajon.cubeta_codigo || `C${shelfIndex + 1}`}</i>
                           <small>{cajon.ancho_cm} cm</small>
                         </div>
                       ))}
                       {freeWidth > 0 && (
-                        <div className="physical-free-space" style={{ width: `${(freeWidth / widthLimit) * 100}%` }}>
+                        <div className="physical-free-space" style={{ flexBasis: `${(freeWidth / widthLimit) * 100}%` }}>
                           Libre: {freeWidth} cm
                         </div>
                       )}
@@ -1865,6 +1895,10 @@ function ShelvingManager({ warehouse }) {
           </article>
         );
         })}
+        <button className="rack-card add-module-card" type="button" onClick={addModule} aria-label="Añadir módulo">
+          <Plus size={44} />
+          <strong>Añadir módulo</strong>
+        </button>
       </div>
     </section>
   );
