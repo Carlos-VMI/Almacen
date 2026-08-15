@@ -113,8 +113,8 @@ function BoxTypeMenu({ disabled, boxTypes, onAdd, label }) {
           if (disabled) event.preventDefault();
         }}
       >
-        <span>{open ? '-' : '+'}</span>
-        {label}
+        <span className="box-type-menu-icon">{open ? '-' : '+'}</span>
+        <span className="box-type-menu-label">{label}</span>
       </summary>
       {!disabled && (
         <div className="box-type-menu-list" role="menu">
