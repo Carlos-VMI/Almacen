@@ -46,6 +46,7 @@ const suffixOptions = ['01', '02', '03', '04'];
 const PAGE_SIZE = 15;
 
 function toNumber(value, fallback = 0) {
+  if (value === '' || value === null || value === undefined) return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -76,44 +77,59 @@ function normalizeRoutingMode(value) {
   return value === ROUTING_MODES.ZIGZAG ? ROUTING_MODES.ZIGZAG : ROUTING_MODES.DIRECT;
 }
 
-function RoutingIcon({ mode }) {
-  if (mode === ROUTING_MODES.ZIGZAG) {
-    return (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M3 6h18L3 12h18L3 18h18" />
-      </svg>
-    );
-  }
-
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M3 6h16a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H3M3 12h16a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H3" />
-    </svg>
-  );
-}
-
-function RoutingModePicker({ value, disabled, onChange }) {
+function RoutingModeSelect({ value, disabled, muted, onChange }) {
   const currentValue = normalizeRoutingMode(value);
 
   return (
-    <div className={`routing-picker ${disabled ? 'disabled' : ''}`} role="radiogroup" aria-label="Ruta de señal">
-      {[
-        { value: ROUTING_MODES.ZIGZAG, label: 'Zig-Zag' },
-        { value: ROUTING_MODES.DIRECT, label: 'Snake' },
-      ].map((option) => (
-        <button
-          className={currentValue === option.value ? 'active' : ''}
-          type="button"
-          key={option.value}
-          onClick={() => onChange(option.value)}
-          disabled={disabled}
-          aria-pressed={currentValue === option.value}
-        >
-          <RoutingIcon mode={option.value} />
-          <span>{option.label}</span>
-        </button>
-      ))}
-    </div>
+    <select
+      className={muted ? 'muted-select' : ''}
+      value={muted ? '' : currentValue}
+      onChange={(event) => onChange(event.target.value)}
+      disabled={disabled}
+      aria-label="Ruta de señal"
+    >
+      {muted ? <option value="">---</option> : null}
+      <option value={ROUTING_MODES.ZIGZAG}>Zig-Zag</option>
+      <option value={ROUTING_MODES.DIRECT}>Snake</option>
+    </select>
+  );
+}
+
+function BoxTypeMenu({ disabled, boxTypes, onAdd, label }) {
+  const detailsRef = useRef(null);
+
+  function addBox(event, boxTypeId) {
+    event.preventDefault();
+    event.stopPropagation();
+    onAdd(boxTypeId);
+  }
+
+  return (
+    <details className="box-type-menu" ref={detailsRef}>
+      <summary
+        aria-disabled={disabled}
+        onClick={(event) => {
+          if (disabled) event.preventDefault();
+        }}
+      >
+        {label}
+      </summary>
+      {!disabled && (
+        <div className="box-type-menu-list" role="menu">
+          {boxTypes.map((boxType) => (
+            <button
+              key={boxType.id}
+              type="button"
+              role="menuitem"
+              onClick={(event) => addBox(event, boxType.id)}
+            >
+              <span>{boxType.codigo} · {formatCm(boxType.ancho_cm)} cm</span>
+              <Plus size={15} />
+            </button>
+          ))}
+        </div>
+      )}
+    </details>
   );
 }
 
@@ -1410,7 +1426,7 @@ function BoxCatalogManager({ warehouse }) {
         <form className="stack-form" onSubmit={saveBoxType}>
           <label>
             ID
-            <input value={form.codigo} onChange={(event) => setForm({ ...form, codigo: event.target.value })} placeholder="C1" required />
+            <input value={form.codigo} onChange={(event) => setForm({ ...form, codigo: event.target.value })} placeholder="M1E1C3" required />
           </label>
           <label>
             Nombre
@@ -1513,7 +1529,7 @@ function ShelvingManager({ warehouse }) {
     if (!currentModules.length) {
       const { data: created, error: createError } = await supabase
         .from('almacen_modulos')
-        .insert({ almacen_id: warehouse.id, nombre: 'Módulo 1', orden: 1, canal_led: 1, routing_mode: ROUTING_MODES.DIRECT })
+        .insert({ almacen_id: warehouse.id, nombre: 'Módulo 1', orden: 1, canal_led: '1', routing_mode: ROUTING_MODES.DIRECT })
         .select()
         .single();
       if (createError) {
@@ -1564,7 +1580,7 @@ function ShelvingManager({ warehouse }) {
         almacen_id: warehouse.id,
         nombre: nextModuleName(modules.length),
         orden: modules.length + 1,
-        canal_led: 1,
+        canal_led: '1',
         routing_mode: ROUTING_MODES.DIRECT,
       })
       .select()
@@ -1667,14 +1683,20 @@ function ShelvingManager({ warehouse }) {
     if (!editingModuleIds.includes(moduleId)) return;
     const hasControllerPatch = Object.prototype.hasOwnProperty.call(patch, 'controlador_id');
     const controllerCleared = hasControllerPatch && !patch.controlador_id;
+    const nextPatch = { ...patch };
+    if (controllerCleared) {
+      nextPatch.controlador_id = null;
+      nextPatch.canal_led = '';
+      nextPatch.routing_mode = ROUTING_MODES.DIRECT;
+    }
     const record = {
-      ...patch,
+      ...nextPatch,
       canal_led: controllerCleared
-        ? null
-        : patch.canal_led
-          ? Math.min(4, Math.max(1, toNumber(patch.canal_led, 1)))
-          : patch.canal_led,
-      routing_mode: patch.routing_mode ? normalizeRoutingMode(patch.routing_mode) : patch.routing_mode,
+        ? ''
+        : nextPatch.canal_led
+          ? String(Math.min(4, Math.max(1, toNumber(nextPatch.canal_led, 1))))
+          : nextPatch.canal_led,
+      routing_mode: nextPatch.routing_mode ? normalizeRoutingMode(nextPatch.routing_mode) : nextPatch.routing_mode,
     };
     const { error: updateError } = await supabase
       .from('almacen_modulos')
@@ -1888,7 +1910,8 @@ function ShelvingManager({ warehouse }) {
                     value={module.controlador_id || ''}
                     onChange={(event) => updateModuleHardware(module.id, {
                       controlador_id: event.target.value || null,
-                      canal_led: event.target.value ? (module.canal_led || 1) : null,
+                      canal_led: event.target.value ? (module.canal_led || '1') : '',
+                      routing_mode: event.target.value ? normalizeRoutingMode(module.routing_mode) : ROUTING_MODES.DIRECT,
                     })}
                     disabled={!isEditing}
                   >
@@ -1902,7 +1925,7 @@ function ShelvingManager({ warehouse }) {
                   Puerto
                   <select
                     className={!hasController ? 'muted-select' : ''}
-                    value={hasController ? (module.canal_led || 1) : ''}
+                    value={hasController ? (module.canal_led || '1') : ''}
                     onChange={(event) => updateModuleHardware(module.id, { canal_led: event.target.value })}
                     disabled={!isEditing || !hasController}
                   >
@@ -1912,10 +1935,11 @@ function ShelvingManager({ warehouse }) {
                 </label>
                 <label>
                   Ruta de señal
-                  <RoutingModePicker
+                  <RoutingModeSelect
                     value={normalizeRoutingMode(module.routing_mode)}
                     onChange={(nextMode) => updateModuleHardware(module.id, { routing_mode: nextMode })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || !hasController}
+                    muted={!hasController}
                   />
                 </label>
               </div>
@@ -1933,21 +1957,12 @@ function ShelvingManager({ warehouse }) {
                 return (
                   <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'}`} key={key}>
                     <span>E{numero}</span>
-                    <select
-                      className="box-type-select"
+                    <BoxTypeMenu
                       disabled={!isEditing || !boxTypes.length || value >= 8}
-                      value=""
-                      onChange={(event) => {
-                        addBoxToShelf(module.id, numero, event.target.value);
-                        event.target.value = '';
-                      }}
-                      aria-label={`Agregar cubeta en estante ${numero}`}
-                    >
-                      <option value="">+ Cubeta</option>
-                      {boxTypes.map((boxType) => (
-                        <option key={boxType.id} value={boxType.id}>{boxType.codigo} · {boxType.ancho_cm} cm</option>
-                      ))}
-                    </select>
+                      boxTypes={boxTypes}
+                      label="+ Cubeta"
+                      onAdd={(boxTypeId) => addBoxToShelf(module.id, numero, boxTypeId)}
+                    />
                     <button
                       className="icon-button shelf-remove-box"
                       type="button"
