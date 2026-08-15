@@ -76,6 +76,47 @@ function normalizeRoutingMode(value) {
   return value === ROUTING_MODES.ZIGZAG ? ROUTING_MODES.ZIGZAG : ROUTING_MODES.DIRECT;
 }
 
+function RoutingIcon({ mode }) {
+  if (mode === ROUTING_MODES.ZIGZAG) {
+    return (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M3 6h18L3 12h18L3 18h18" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h16a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H3M3 12h16a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H3" />
+    </svg>
+  );
+}
+
+function RoutingModePicker({ value, disabled, onChange }) {
+  const currentValue = normalizeRoutingMode(value);
+
+  return (
+    <div className={`routing-picker ${disabled ? 'disabled' : ''}`} role="radiogroup" aria-label="Ruta de señal">
+      {[
+        { value: ROUTING_MODES.ZIGZAG, label: 'Zig-Zag' },
+        { value: ROUTING_MODES.DIRECT, label: 'Snake' },
+      ].map((option) => (
+        <button
+          className={currentValue === option.value ? 'active' : ''}
+          type="button"
+          key={option.value}
+          onClick={() => onChange(option.value)}
+          disabled={disabled}
+          aria-pressed={currentValue === option.value}
+        >
+          <RoutingIcon mode={option.value} />
+          <span>{option.label}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function calculateLedMap({
   cajones,
   shelfWidthCm,
@@ -1624,9 +1665,15 @@ function ShelvingManager({ warehouse }) {
 
   async function updateModuleHardware(moduleId, patch) {
     if (!editingModuleIds.includes(moduleId)) return;
+    const hasControllerPatch = Object.prototype.hasOwnProperty.call(patch, 'controlador_id');
+    const controllerCleared = hasControllerPatch && !patch.controlador_id;
     const record = {
       ...patch,
-      canal_led: patch.canal_led ? Math.min(4, Math.max(1, toNumber(patch.canal_led, 1))) : patch.canal_led,
+      canal_led: controllerCleared
+        ? null
+        : patch.canal_led
+          ? Math.min(4, Math.max(1, toNumber(patch.canal_led, 1)))
+          : patch.canal_led,
       routing_mode: patch.routing_mode ? normalizeRoutingMode(patch.routing_mode) : patch.routing_mode,
     };
     const { error: updateError } = await supabase
@@ -1839,7 +1886,10 @@ function ShelvingManager({ warehouse }) {
                   Controlador
                   <select
                     value={module.controlador_id || ''}
-                    onChange={(event) => updateModuleHardware(module.id, { controlador_id: event.target.value || null })}
+                    onChange={(event) => updateModuleHardware(module.id, {
+                      controlador_id: event.target.value || null,
+                      canal_led: event.target.value ? (module.canal_led || 1) : null,
+                    })}
                     disabled={!isEditing}
                   >
                       <option value="">Sin controlador</option>
@@ -1862,14 +1912,11 @@ function ShelvingManager({ warehouse }) {
                 </label>
                 <label>
                   Ruta de señal
-                  <select
+                  <RoutingModePicker
                     value={normalizeRoutingMode(module.routing_mode)}
-                    onChange={(event) => updateModuleHardware(module.id, { routing_mode: event.target.value })}
+                    onChange={(nextMode) => updateModuleHardware(module.id, { routing_mode: nextMode })}
                     disabled={!isEditing}
-                  >
-                    <option value={ROUTING_MODES.ZIGZAG}>Zig-Zag</option>
-                    <option value={ROUTING_MODES.DIRECT}>Snake</option>
-                  </select>
+                  />
                 </label>
               </div>
             </div>

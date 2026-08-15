@@ -859,11 +859,12 @@ tr:last-child td {
 .rack-grid {
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(auto-fit, minmax(600px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 760px), 760px));
   justify-content: start;
 }
 
 .rack-card {
+  width: min(100%, 760px);
   min-width: 0;
   position: relative;
 }
@@ -927,7 +928,7 @@ tr:last-child td {
   align-items: center;
   display: grid;
   gap: 7px;
-  grid-template-columns: 28px minmax(54px, 64px) 30px minmax(0, 1fr);
+  grid-template-columns: 28px minmax(88px, 112px) 30px minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -1004,7 +1005,7 @@ tr:last-child td {
   display: grid;
   align-items: end;
   gap: 10px;
-  grid-template-columns: minmax(170px, 0.75fr) minmax(160px, 1fr) minmax(74px, 0.28fr) minmax(130px, 0.65fr);
+  grid-template-columns: minmax(190px, 0.85fr) minmax(170px, 1fr) minmax(78px, 0.32fr) minmax(190px, 0.85fr);
 }
 
 .module-hardware-fields label {
@@ -1020,9 +1021,64 @@ tr:last-child td {
 }
 
 .module-hardware-fields select.muted-select {
-  background: #eef2f7;
+  background:
+    repeating-linear-gradient(135deg, #f2f5f9 0, #f2f5f9 5px, #e6ebf2 5px, #e6ebf2 8px);
+  border-color: #cbd5e1;
   color: #94a3b8;
-  opacity: 0.72;
+  cursor: not-allowed !important;
+  opacity: 0.76;
+}
+
+.module-hardware-fields select.muted-select:disabled {
+  pointer-events: none;
+}
+
+.routing-picker {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: 1fr 1fr;
+  min-height: 31px;
+  padding: 3px;
+}
+
+.routing-picker button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  color: #526174;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 900;
+  gap: 4px;
+  justify-content: center;
+  min-height: 25px;
+  padding: 2px 5px;
+  white-space: nowrap;
+}
+
+.routing-picker button.active {
+  background: #dbeafe;
+  color: #174a7c;
+}
+
+.routing-picker button:disabled {
+  cursor: not-allowed !important;
+  opacity: 0.5;
+}
+
+.routing-picker.disabled {
+  background: #eef2f7;
+}
+
+.routing-picker svg {
+  flex: 0 0 auto;
+  height: 16px;
+  width: 16px;
 }
 
 .module-card-actions {
@@ -1165,7 +1221,8 @@ tr:last-child td {
 .box-type-select {
   font-size: 11px;
   min-height: 34px;
-  padding: 4px 5px;
+  min-width: 88px;
+  padding: 4px 7px;
 }
 
 .shelf-remove-box {
