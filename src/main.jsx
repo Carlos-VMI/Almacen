@@ -97,6 +97,7 @@ function RoutingModeSelect({ value, disabled, muted, onChange }) {
 
 function BoxTypeMenu({ disabled, boxTypes, onAdd, label }) {
   const detailsRef = useRef(null);
+  const [open, setOpen] = useState(false);
 
   function addBox(event, boxTypeId) {
     event.preventDefault();
@@ -105,13 +106,14 @@ function BoxTypeMenu({ disabled, boxTypes, onAdd, label }) {
   }
 
   return (
-    <details className="box-type-menu" ref={detailsRef}>
+    <details className="box-type-menu" ref={detailsRef} onToggle={(event) => setOpen(event.currentTarget.open)}>
       <summary
         aria-disabled={disabled}
         onClick={(event) => {
           if (disabled) event.preventDefault();
         }}
       >
+        <span>{open ? '-' : '+'}</span>
         {label}
       </summary>
       {!disabled && (
@@ -1426,16 +1428,15 @@ function BoxCatalogManager({ warehouse }) {
         <form className="stack-form" onSubmit={saveBoxType}>
           <label>
             ID
-            <input value={form.codigo} onChange={(event) => setForm({ ...form, codigo: event.target.value })} placeholder="M1E1C3" required />
+            <input value={form.codigo} onChange={(event) => setForm({ ...form, codigo: event.target.value })} placeholder="P1" required />
           </label>
           <label>
             Nombre
             <input value={form.nombre} onChange={(event) => setForm({ ...form, nombre: event.target.value })} placeholder="Pequeña" required />
           </label>
           <label>
-            Ancho físico
+            Ancho físico (cm)
             <input type="text" inputMode="decimal" value={form.ancho_cm} onChange={(event) => setForm({ ...form, ancho_cm: event.target.value.replace(/[^0-9.]/g, '') })} placeholder="12" required />
-            <small>cm</small>
           </label>
           <button className="primary-button" type="submit">
             <Save size={18} />
@@ -1478,6 +1479,7 @@ function ShelvingManager({ warehouse }) {
   const [controllers, setControllers] = useState([]);
   const [boxTypes, setBoxTypes] = useState([]);
   const [editingModuleIds, setEditingModuleIds] = useState([]);
+  const [shelfAlerts, setShelfAlerts] = useState({});
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -1756,7 +1758,11 @@ function ShelvingManager({ warehouse }) {
         moduleBaseOffsetCm(moduleId)
       );
     } catch (validationError) {
-      setError(validationError.message);
+      const alertKey = `${moduleId}-${numero}`;
+      setShelfAlerts((currentAlerts) => ({
+        ...currentAlerts,
+        [alertKey]: validationError.message,
+      }));
       return;
     }
 
@@ -1777,6 +1783,11 @@ function ShelvingManager({ warehouse }) {
     }
 
     setShelves((currentShelves) => ({ ...currentShelves, [key]: payload }));
+    setShelfAlerts((currentAlerts) => {
+      const nextAlerts = { ...currentAlerts };
+      delete nextAlerts[key];
+      return nextAlerts;
+    });
     setError('');
   }
 
@@ -1957,10 +1968,26 @@ function ShelvingManager({ warehouse }) {
                 return (
                   <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'}`} key={key}>
                     <span>E{numero}</span>
+                    {shelfAlerts[key] && (
+                      <div className="shelf-toast" role="alert">
+                        <span>{shelfAlerts[key]}</span>
+                        <button
+                          type="button"
+                          onClick={() => setShelfAlerts((currentAlerts) => {
+                            const nextAlerts = { ...currentAlerts };
+                            delete nextAlerts[key];
+                            return nextAlerts;
+                          })}
+                          aria-label="Cerrar alerta"
+                        >
+                          <X size={13} />
+                        </button>
+                      </div>
+                    )}
                     <BoxTypeMenu
                       disabled={!isEditing || !boxTypes.length || value >= 8}
                       boxTypes={boxTypes}
-                      label="+ Cubeta"
+                      label="Cubeta"
                       onAdd={(boxTypeId) => addBoxToShelf(module.id, numero, boxTypeId)}
                     />
                     <button
