@@ -95,9 +95,8 @@ function RoutingModeSelect({ value, disabled, muted, onChange }) {
   );
 }
 
-function BoxTypeMenu({ disabled, boxTypes, onAdd, label }) {
-  const detailsRef = useRef(null);
-  const [open, setOpen] = useState(false);
+function BoxTypeMenu({ disabled, boxTypes, onAdd, label, menuId, openDropdownId, setOpenDropdownId, openDirection = 'down' }) {
+  const open = openDropdownId === menuId;
 
   function addBox(event, boxTypeId) {
     event.preventDefault();
@@ -106,17 +105,22 @@ function BoxTypeMenu({ disabled, boxTypes, onAdd, label }) {
   }
 
   return (
-    <details className="box-type-menu" ref={detailsRef} onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary
+    <div className={`box-type-menu ${open ? 'open' : ''} ${openDirection === 'up' ? 'opens-up' : ''}`}>
+      <button
+        type="button"
+        className="box-type-menu-trigger"
         aria-disabled={disabled}
+        aria-expanded={open}
         onClick={(event) => {
-          if (disabled) event.preventDefault();
+          if (disabled) return;
+          event.stopPropagation();
+          setOpenDropdownId(open ? null : menuId);
         }}
       >
         <span className="box-type-menu-icon">{open ? '-' : '+'}</span>
         <span className="box-type-menu-label">{label}</span>
-      </summary>
-      {!disabled && (
+      </button>
+      {!disabled && open && (
         <div className="box-type-menu-list" role="menu">
           {boxTypes.map((boxType) => (
             <button
@@ -131,7 +135,7 @@ function BoxTypeMenu({ disabled, boxTypes, onAdd, label }) {
           ))}
         </div>
       )}
-    </details>
+    </div>
   );
 }
 
@@ -1481,6 +1485,7 @@ function ShelvingManager({ warehouse }) {
   const [editingModuleIds, setEditingModuleIds] = useState([]);
   const [shelfAlerts, setShelfAlerts] = useState({});
   const [error, setError] = useState('');
+  const [openDropdownId, setOpenDropdownId] = useState(null);
 
   useEffect(() => {
     loadLayout();
@@ -1988,6 +1993,10 @@ function ShelvingManager({ warehouse }) {
                       disabled={!isEditing || !boxTypes.length || value >= 8}
                       boxTypes={boxTypes}
                       label="Cubeta"
+                      menuId={key}
+                      openDropdownId={openDropdownId}
+                      setOpenDropdownId={setOpenDropdownId}
+                      openDirection={numero >= 7 ? 'up' : 'down'}
                       onAdd={(boxTypeId) => addBoxToShelf(module.id, numero, boxTypeId)}
                     />
                     <button

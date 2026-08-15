@@ -869,6 +869,7 @@ tr:last-child td {
   width: min(100%, 760px);
   min-width: 0;
   position: relative;
+  overflow: visible;
 }
 
 .rack-card.locked {
@@ -925,6 +926,7 @@ tr:last-child td {
   gap: 5px;
   min-height: 432px;
   padding: 12px;
+  overflow: visible;
 }
 
 .rack-row {
@@ -935,6 +937,7 @@ tr:last-child td {
   min-height: 62px;
   min-width: 0;
   position: relative;
+  overflow: visible;
 }
 
 .rack-row.invalid {
@@ -1190,9 +1193,10 @@ tr:last-child td {
 .box-type-menu {
   min-width: 72px;
   position: relative;
+  z-index: 25;
 }
 
-.box-type-menu summary {
+.box-type-menu-trigger {
   align-items: center;
   background: #ffffff;
   border: 1px solid #cbd5e1;
@@ -1210,6 +1214,7 @@ tr:last-child td {
   min-width: 72px;
   padding: 4px 7px;
   user-select: none;
+  width: 72px;
 }
 
 .box-type-menu-icon {
@@ -1227,11 +1232,7 @@ tr:last-child td {
   white-space: nowrap;
 }
 
-.box-type-menu summary::-webkit-details-marker {
-  display: none;
-}
-
-.box-type-menu summary[aria-disabled="true"] {
+.box-type-menu-trigger[aria-disabled="true"] {
   background: #eef2f7;
   color: #94a3b8;
   cursor: default !important;
@@ -1250,7 +1251,12 @@ tr:last-child td {
   padding: 5px;
   position: absolute;
   top: calc(100% + 5px);
-  z-index: 20;
+  z-index: 80;
+}
+
+.box-type-menu.opens-up .box-type-menu-list {
+  bottom: calc(100% + 5px);
+  top: auto;
 }
 
 .box-type-menu-list button {
