@@ -932,7 +932,7 @@ tr:last-child td {
   display: grid;
   gap: 7px;
   grid-template-columns: 28px minmax(78px, 90px) 30px minmax(0, 1fr);
-  min-height: 44px;
+  min-height: 52px;
   min-width: 0;
   position: relative;
 }
@@ -1085,7 +1085,8 @@ tr:last-child td {
   border-radius: 6px;
   display: grid;
   gap: 4px;
-  min-height: 42px;
+  height: 48px;
+  min-height: 48px;
   padding: 5px;
   caret-color: transparent;
   cursor: default !important;
@@ -1093,6 +1094,7 @@ tr:last-child td {
 }
 
 .physical-preview {
+  align-items: stretch;
   display: flex;
   gap: 5px;
   overflow: hidden;
@@ -1130,6 +1132,8 @@ tr:last-child td {
   display: grid;
   gap: 3px;
   grid-template-columns: minmax(0, 1fr);
+  height: 36px;
+  min-height: 36px;
   min-width: 34px;
   padding: 4px;
 }
@@ -1162,7 +1166,9 @@ tr:last-child td {
   font-size: 10px;
   font-weight: 900;
   gap: 2px;
+  height: 36px;
   justify-content: center;
+  min-height: 36px;
   min-width: 34px;
   padding: 3px 5px;
   text-align: center;
