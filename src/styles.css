@@ -922,7 +922,7 @@ tr:last-child td {
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   display: grid;
-  gap: 8px;
+  gap: 5px;
   min-height: 432px;
   padding: 12px;
 }
@@ -932,7 +932,7 @@ tr:last-child td {
   display: grid;
   gap: 7px;
   grid-template-columns: 28px minmax(78px, 90px) 30px minmax(0, 1fr);
-  min-height: 52px;
+  min-height: 62px;
   min-width: 0;
   position: relative;
 }
@@ -1085,9 +1085,9 @@ tr:last-child td {
   border-radius: 6px;
   display: grid;
   gap: 4px;
-  height: 48px;
-  min-height: 48px;
-  padding: 5px;
+  height: 58px;
+  min-height: 58px;
+  padding: 6px;
   caret-color: transparent;
   cursor: default !important;
   user-select: none;
@@ -1132,8 +1132,8 @@ tr:last-child td {
   display: grid;
   gap: 3px;
   grid-template-columns: minmax(0, 1fr);
-  height: 36px;
-  min-height: 36px;
+  height: 44px;
+  min-height: 44px;
   min-width: 34px;
   padding: 4px;
 }
@@ -1166,9 +1166,9 @@ tr:last-child td {
   font-size: 10px;
   font-weight: 900;
   gap: 2px;
-  height: 36px;
+  height: 44px;
   justify-content: center;
-  min-height: 36px;
+  min-height: 44px;
   min-width: 34px;
   padding: 3px 5px;
   text-align: center;
