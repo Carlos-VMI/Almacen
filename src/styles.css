@@ -927,7 +927,7 @@ tr:last-child td {
   align-items: center;
   display: grid;
   gap: 7px;
-  grid-template-columns: 28px minmax(58px, 70px) 30px minmax(0, 1fr);
+  grid-template-columns: 28px minmax(54px, 64px) 30px minmax(0, 1fr);
   min-width: 0;
 }
 
@@ -1004,7 +1004,7 @@ tr:last-child td {
   display: grid;
   align-items: end;
   gap: 10px;
-  grid-template-columns: minmax(150px, 0.65fr) minmax(160px, 1fr) minmax(74px, 0.28fr) minmax(150px, 0.75fr);
+  grid-template-columns: minmax(170px, 0.75fr) minmax(160px, 1fr) minmax(74px, 0.28fr) minmax(130px, 0.65fr);
 }
 
 .module-hardware-fields label {
@@ -1017,6 +1017,12 @@ tr:last-child td {
 .module-width-field input {
   min-height: 31px;
   padding: 4px 6px;
+}
+
+.module-hardware-fields select.muted-select {
+  background: #eef2f7;
+  color: #94a3b8;
+  opacity: 0.72;
 }
 
 .module-card-actions {
@@ -1069,7 +1075,7 @@ tr:last-child td {
 
 .physical-preview {
   display: flex;
-  gap: 4px;
+  gap: 5px;
   overflow: hidden;
 }
 
@@ -1105,7 +1111,7 @@ tr:last-child td {
   display: grid;
   gap: 3px;
   grid-template-columns: minmax(0, 1fr);
-  min-width: 42px;
+  min-width: 34px;
   padding: 4px;
 }
 
@@ -1138,7 +1144,7 @@ tr:last-child td {
   font-weight: 900;
   gap: 2px;
   justify-content: center;
-  min-width: 40px;
+  min-width: 34px;
   padding: 3px 5px;
   text-align: center;
 }

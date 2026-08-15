@@ -51,7 +51,8 @@ function toNumber(value, fallback = 0) {
 }
 
 function formatCm(value) {
-  return toNumber(value, 0).toFixed(2);
+  const numericValue = toNumber(value, 0);
+  return Number.isInteger(numericValue) ? String(numericValue) : numericValue.toFixed(2);
 }
 
 function clampShelfCount(value) {
@@ -1794,6 +1795,7 @@ function ShelvingManager({ warehouse }) {
       <div className="rack-grid">
         {modules.map((module, moduleIndex) => {
           const isEditing = editingModuleIds.includes(module.id);
+          const hasController = Boolean(module.controlador_id);
           return (
           <article className={`rack-card ${isEditing ? 'editing' : 'locked'}`} key={module.id}>
             <div className="rack-title">
@@ -1849,10 +1851,12 @@ function ShelvingManager({ warehouse }) {
                 <label>
                   Puerto
                   <select
-                    value={module.canal_led || 1}
+                    className={!hasController ? 'muted-select' : ''}
+                    value={hasController ? (module.canal_led || 1) : ''}
                     onChange={(event) => updateModuleHardware(module.id, { canal_led: event.target.value })}
-                    disabled={!isEditing}
+                    disabled={!isEditing || !hasController}
                   >
+                    {!hasController ? <option value="">---</option> : null}
                     {[1, 2, 3, 4].map((channel) => <option key={channel} value={channel}>{channel}</option>)}
                   </select>
                 </label>
@@ -1863,8 +1867,8 @@ function ShelvingManager({ warehouse }) {
                     onChange={(event) => updateModuleHardware(module.id, { routing_mode: event.target.value })}
                     disabled={!isEditing}
                   >
-                    <option value={ROUTING_MODES.DIRECT}>Retorno directo</option>
                     <option value={ROUTING_MODES.ZIGZAG}>Zig-Zag</option>
+                    <option value={ROUTING_MODES.DIRECT}>Snake</option>
                   </select>
                 </label>
               </div>
@@ -1991,13 +1995,13 @@ function WarehouseWorkspace({ warehouse }) {
           <LayoutGrid size={17} />
           Configuración estantería
         </button>
-        <button className={tab === 'iot' ? 'active' : ''} onClick={() => setTab('iot')}>
-          <Cpu size={17} />
-          Controladores IoT
-        </button>
         <button className={tab === 'cubetas' ? 'active' : ''} onClick={() => setTab('cubetas')}>
           <Boxes size={17} />
           Catálogo cubetas
+        </button>
+        <button className={tab === 'iot' ? 'active' : ''} onClick={() => setTab('iot')}>
+          <Cpu size={17} />
+          Controladores IoT
         </button>
         <button className="import-tab" type="button" onClick={() => fileInputRef.current?.click()}>
           <FileSpreadsheet size={17} />
