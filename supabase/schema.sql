@@ -73,6 +73,7 @@ create table if not exists public.almacen_modulos (
   ancho_estante_cm numeric,
   controlador_id uuid references public.almacen_iot_controladores(id) on delete set null,
   canal_led integer not null default 1 check (canal_led between 1 and 4),
+  routing_mode text not null default 'direct' check (routing_mode in ('direct', 'zigzag')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -80,7 +81,13 @@ create table if not exists public.almacen_modulos (
 alter table public.almacen_modulos
   add column if not exists ancho_estante_cm numeric,
   add column if not exists controlador_id uuid references public.almacen_iot_controladores(id) on delete set null,
-  add column if not exists canal_led integer not null default 1;
+  add column if not exists canal_led integer not null default 1,
+  add column if not exists routing_mode text not null default 'direct';
+
+alter table public.almacen_modulos
+  drop constraint if exists almacen_modulos_routing_mode_check,
+  add constraint almacen_modulos_routing_mode_check
+  check (routing_mode in ('direct', 'zigzag'));
 
 create table if not exists public.almacen_estantes (
   id uuid primary key default gen_random_uuid(),

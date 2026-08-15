@@ -26,6 +26,10 @@ import './styles.css';
 const DEFAULT_SHELF_WIDTH_CM = 100;
 const DEFAULT_TOTAL_LEDS = 60;
 const DEFAULT_LED_DENSITY = 60;
+const ROUTING_MODES = {
+  DIRECT: 'direct',
+  ZIGZAG: 'zigzag',
+};
 
 const emptyWarehouse = { nombre: '', ubicacion: '', descripcion: '' };
 const emptyArticle = {
@@ -46,6 +50,10 @@ function toNumber(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function formatCm(value) {
+  return toNumber(value, 0).toFixed(2);
+}
+
 function clampShelfCount(value) {
   return Math.min(8, Math.max(0, toNumber(value, 0)));
 }
@@ -63,17 +71,35 @@ function readJsonArray(value) {
   return [];
 }
 
-function calculateLedLayout({ cajones, shelfWidthCm, controller, channel, shelfNumber = 1, moduleBaseOffsetCm = 0 }) {
+function normalizeRoutingMode(value) {
+  return value === ROUTING_MODES.ZIGZAG ? ROUTING_MODES.ZIGZAG : ROUTING_MODES.DIRECT;
+}
+
+function calculateLedMap({
+  cajones,
+  shelfWidthCm,
+  controller,
+  channel,
+  shelfNumber = 1,
+  moduleBaseOffsetCm = 0,
+  routingMode = ROUTING_MODES.DIRECT,
+}) {
   const width = Math.max(1, toNumber(shelfWidthCm, DEFAULT_SHELF_WIDTH_CM));
   const density = Math.max(0, toNumber(controller?.leds_por_metro, DEFAULT_LED_DENSITY)) / 100;
+  const normalizedRouting = normalizeRoutingMode(routingMode);
+  const reverseShelf = normalizedRouting === ROUTING_MODES.ZIGZAG && shelfNumber % 2 === 0;
   const shelfOffsetCm = Math.max(0, toNumber(moduleBaseOffsetCm, 0))
     + (Math.max(0, toNumber(shelfNumber, 1) - 1) * width);
   let cursorCm = 0;
 
   return cajones.map((cajon, index) => {
     const anchoCm = Math.max(0, toNumber(cajon.ancho_cm, 0));
-    const startLed = density > 0 ? Math.round((shelfOffsetCm + cursorCm) * density) : 0;
-    const endLed = density > 0 ? Math.round((shelfOffsetCm + cursorCm + anchoCm) * density) : 0;
+    const physicalStartCm = cursorCm;
+    const logicalStartCm = reverseShelf
+      ? Math.max(0, width - physicalStartCm - anchoCm)
+      : physicalStartCm;
+    const startLed = density > 0 ? Math.round((shelfOffsetCm + logicalStartCm) * density) : 0;
+    const endLed = density > 0 ? Math.round((shelfOffsetCm + logicalStartCm + anchoCm) * density) : 0;
     cursorCm += anchoCm;
 
     return {
@@ -86,7 +112,9 @@ function calculateLedLayout({ cajones, shelfWidthCm, controller, channel, shelfN
       controlador_id: controller?.id ?? null,
       esp32_ip: String(controller?.ip || '').trim(),
       canal: toNumber(channel, 1),
+      routing_mode: normalizedRouting,
       startLed,
+      endLed,
       ledCount: Math.max(0, endLed - startLed),
     };
   });
@@ -110,7 +138,9 @@ function normalizeShelfRecord(row, shelfWidthCm, module = {}, controllersById = 
       controlador_id: current.controlador_id ?? module?.controlador_id ?? null,
       esp32_ip: String(current.esp32_ip || controller?.ip || row?.esp32_ip || '').trim(),
       canal: toNumber(current.canal ?? module?.canal_led, 1),
+      routing_mode: normalizeRoutingMode(current.routing_mode ?? module?.routing_mode),
       startLed: toNumber(current.startLed, 0),
+      endLed: toNumber(current.endLed, 0),
       ledCount: toNumber(current.ledCount, 0),
     };
   });
@@ -154,13 +184,14 @@ function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controller
       0,
       Math.round(width * (Math.max(0, toNumber(controllersById.get(module?.controlador_id)?.leds_por_metro, DEFAULT_LED_DENSITY)) / 100))
     ),
-    cajones: calculateLedLayout({
+    cajones: calculateLedMap({
       cajones,
       shelfWidthCm: width,
       controller: controllersById.get(module?.controlador_id) ?? null,
       channel: module?.canal_led ?? 1,
       shelfNumber,
       moduleBaseOffsetCm,
+      routingMode: module?.routing_mode,
     }),
   };
 }
@@ -1389,7 +1420,6 @@ function ShelvingManager({ warehouse }) {
   const [controllers, setControllers] = useState([]);
   const [boxTypes, setBoxTypes] = useState([]);
   const [editingModuleIds, setEditingModuleIds] = useState([]);
-  const [selectedShelfKey, setSelectedShelfKey] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -1441,7 +1471,7 @@ function ShelvingManager({ warehouse }) {
     if (!currentModules.length) {
       const { data: created, error: createError } = await supabase
         .from('almacen_modulos')
-        .insert({ almacen_id: warehouse.id, nombre: 'Módulo 1', orden: 1, canal_led: 1 })
+        .insert({ almacen_id: warehouse.id, nombre: 'Módulo 1', orden: 1, canal_led: 1, routing_mode: ROUTING_MODES.DIRECT })
         .select()
         .single();
       if (createError) {
@@ -1493,6 +1523,7 @@ function ShelvingManager({ warehouse }) {
         nombre: nextModuleName(modules.length),
         orden: modules.length + 1,
         canal_led: 1,
+        routing_mode: ROUTING_MODES.DIRECT,
       })
       .select()
       .single();
@@ -1595,6 +1626,7 @@ function ShelvingManager({ warehouse }) {
     const record = {
       ...patch,
       canal_led: patch.canal_led ? Math.min(4, Math.max(1, toNumber(patch.canal_led, 1))) : patch.canal_led,
+      routing_mode: patch.routing_mode ? normalizeRoutingMode(patch.routing_mode) : patch.routing_mode,
     };
     const { error: updateError } = await supabase
       .from('almacen_modulos')
@@ -1632,7 +1664,6 @@ function ShelvingManager({ warehouse }) {
       return;
     }
     setEditingModuleIds((current) => current.filter((id) => id !== moduleId));
-    setSelectedShelfKey((current) => (current.startsWith(`${moduleId}-`) ? '' : current));
     await normalizeModuleOrder();
     loadLayout();
   }
@@ -1825,6 +1856,17 @@ function ShelvingManager({ warehouse }) {
                     {[1, 2, 3, 4].map((channel) => <option key={channel} value={channel}>{channel}</option>)}
                   </select>
                 </label>
+                <label>
+                  Ruta de señal
+                  <select
+                    value={normalizeRoutingMode(module.routing_mode)}
+                    onChange={(event) => updateModuleHardware(module.id, { routing_mode: event.target.value })}
+                    disabled={!isEditing}
+                  >
+                    <option value={ROUTING_MODES.DIRECT}>Retorno directo</option>
+                    <option value={ROUTING_MODES.ZIGZAG}>Zig-Zag</option>
+                  </select>
+                </label>
               </div>
             </div>
             <div className="rack-frame">
@@ -1837,15 +1879,8 @@ function ShelvingManager({ warehouse }) {
                 const widthLimit = moduleShelfWidth(module);
                 const freeWidth = Math.max(0, widthLimit - totalWidth);
                 const widthOk = totalWidth <= widthLimit;
-                const isShelfSelected = selectedShelfKey === key;
                 return (
-                  <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'} ${isShelfSelected ? 'selected' : ''}`} key={key}>
-                    <button
-                      className="shelf-select-dot"
-                      type="button"
-                      onClick={() => setSelectedShelfKey(isShelfSelected ? '' : key)}
-                      aria-label={`Seleccionar estante ${numero}`}
-                    />
+                  <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'}`} key={key}>
                     <span>E{numero}</span>
                     <select
                       className="box-type-select"
@@ -1879,12 +1914,13 @@ function ShelvingManager({ warehouse }) {
                           style={{ flexBasis: `${Math.max(4, (toNumber(cajon.ancho_cm, 0) / widthLimit) * 100)}%` }}
                         >
                           <i>{cajon.cubeta_codigo || `C${shelfIndex + 1}`}</i>
-                          <small>{cajon.ancho_cm} cm</small>
+                          <small>{formatCm(cajon.ancho_cm)} cm</small>
                         </div>
                       ))}
                       {freeWidth > 0 && (
                         <div className="physical-free-space" style={{ flexBasis: `${(freeWidth / widthLimit) * 100}%` }}>
-                          Libre: {freeWidth} cm
+                          <strong>Libre</strong>
+                          <small>{formatCm(freeWidth)} cm</small>
                         </div>
                       )}
                     </div>
