@@ -6,6 +6,8 @@ import {
   Building2,
   Cpu,
   Database,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
   LayoutGrid,
   LogOut,
@@ -34,7 +36,7 @@ const ROUTING_MODES = {
 };
 
 const emptyWarehouse = { nombre: '', ubicacion: '', descripcion: '' };
-const emptyAdmin = { username: '', email: '', credential: '', activo: true };
+const emptyAdmin = { username: '', email: '', activo: true, newPassword: '' };
 const emptySystemSettings = { notificacion_reposicion_email: '' };
 const emptyArticle = {
   codigo_articulo: '',
@@ -1531,14 +1533,112 @@ function BoxCatalogManager({ warehouse }) {
   );
 }
 
+function AdminStatusBadge({ active }) {
+  return (
+    <span className={`status-badge ${active ? 'active' : 'inactive'}`}>
+      {active ? 'Activo' : 'Inactivo'}
+    </span>
+  );
+}
+
+function AdminEditModal({ admin, form, setForm, saving, error, onClose, onSave }) {
+  const [showPassword, setShowPassword] = useState(false);
+
+  if (!admin) return null;
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="admin-edit-title">
+        <div className="modal-heading">
+          <div>
+            <span className="eyebrow">Acceso web</span>
+            <h2 id="admin-edit-title">Editar administrador</h2>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Cerrar edición">
+            <X size={18} />
+          </button>
+        </div>
+
+        <form className="stack-form" onSubmit={onSave}>
+          <label>
+            Nombre de usuario
+            <input
+              value={form.username}
+              onChange={(event) => setForm({ ...form, username: event.target.value })}
+              placeholder="admin.madrid"
+              autoComplete="username"
+              required
+            />
+          </label>
+
+          <label>
+            Correo electrónico
+            <input
+              type="email"
+              value={form.email}
+              disabled
+              placeholder="admin@empresa.com"
+              autoComplete="email"
+            />
+          </label>
+
+          <label>
+            Nueva contraseña
+            <div className="password-field">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={form.newPassword}
+                onChange={(event) => setForm({ ...form, newPassword: event.target.value })}
+                placeholder="Dejar vacío para no cambiar"
+                autoComplete="new-password"
+              />
+              <button
+                className="password-toggle"
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              >
+                {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
+          </label>
+
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={form.activo}
+              onChange={(event) => setForm({ ...form, activo: event.target.checked })}
+            />
+            Administrador activo
+          </label>
+
+          {error ? <div className="error-box compact-error">{error}</div> : null}
+
+          <div className="modal-actions">
+            <button className="secondary-button" type="button" onClick={onClose} disabled={saving}>
+              Cancelar
+            </button>
+            <button className="primary-button" type="submit" disabled={saving}>
+              <Save size={18} />
+              {saving ? 'Guardando...' : 'Guardar cambios'}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function AdministrationManager({ warehouse }) {
   const [admins, setAdmins] = useState([]);
   const [selected, setSelected] = useState(null);
   const [adminForm, setAdminForm] = useState(emptyAdmin);
   const [settings, setSettings] = useState(emptySystemSettings);
   const [loading, setLoading] = useState(true);
+  const [savingAdmin, setSavingAdmin] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   const [error, setError] = useState('');
+  const [modalError, setModalError] = useState('');
   const [status, setStatus] = useState('');
 
   useEffect(() => {
@@ -1549,9 +1649,10 @@ function AdministrationManager({ warehouse }) {
     setAdminForm(selected ? {
       username: selected.username || '',
       email: selected.email || '',
-      credential: selected.credential || '',
       activo: selected.activo !== false,
+      newPassword: '',
     } : emptyAdmin);
+    setModalError('');
   }, [selected]);
 
   async function loadAdministration() {
@@ -1586,41 +1687,49 @@ function AdministrationManager({ warehouse }) {
 
   async function saveAdmin(event) {
     event.preventDefault();
-    setError('');
+    if (!selected?.id) return;
+
+    setModalError('');
     setStatus('');
+    setSavingAdmin(true);
 
     const record = {
       username: adminForm.username.trim(),
-      email: adminForm.email.trim(),
-      credential: adminForm.credential.trim(),
       activo: Boolean(adminForm.activo),
     };
 
-    const request = selected?.id
-      ? supabase.from('almacen_admins').update(record).eq('id', selected.id)
-      : supabase.from('almacen_admins').insert(record);
-    const { error: saveError } = await request;
+    const { error: saveError } = await supabase
+      .from('almacen_admins')
+      .update(record)
+      .eq('id', selected.id);
 
     if (saveError) {
-      setError(saveError.message);
+      setModalError(saveError.message);
+      setSavingAdmin(false);
       return;
     }
 
+    if (adminForm.newPassword.trim()) {
+      /*
+       * Cambio de contraseña:
+       * Aquí se debe llamar a una Edge Function de Supabase que utilice
+       * supabase.auth.admin.updateUserById para cambiar la contraseña en el
+       * esquema interno, enviando el id y el nuevo password.
+       *
+       * No se debe guardar la contraseña en almacen_admins ni usar la API
+       * cliente estándar, porque el frontend no puede cambiar la contraseña
+       * de otro usuario sin Service Role Key.
+       */
+      console.info('Cambio de contraseña pendiente de Edge Function', {
+        id: selected.id,
+        hasNewPassword: true,
+      });
+    }
+
+    setSavingAdmin(false);
     setSelected(null);
     setAdminForm(emptyAdmin);
     setStatus('Administrador guardado.');
-    loadAdministration();
-  }
-
-  async function deleteAdmin(admin) {
-    if (!window.confirm(`Eliminar el administrador "${admin.username}"?`)) return;
-    const { error: deleteError } = await supabase.from('almacen_admins').delete().eq('id', admin.id);
-    if (deleteError) {
-      setError(deleteError.message);
-      return;
-    }
-    if (selected?.id === admin.id) setSelected(null);
-    setStatus('Administrador eliminado.');
     loadAdministration();
   }
 
@@ -1649,98 +1758,53 @@ function AdministrationManager({ warehouse }) {
 
   return (
     <div className="admin-grid">
-      <section className="form-panel">
+      <section className="inventory-panel admin-list-panel">
         <div className="panel-heading">
           <div>
             <span className="eyebrow">Administración</span>
-            <h2>{selected ? 'Editar administrador' : 'Gestión de administradores'}</h2>
+            <h2>Gestión de administradores</h2>
           </div>
           <ShieldCheck size={22} />
         </div>
 
-        <form className="stack-form" onSubmit={saveAdmin}>
-          <label>
-            Nombre de usuario
-            <input
-              value={adminForm.username}
-              onChange={(event) => setAdminForm({ ...adminForm, username: event.target.value })}
-              placeholder="admin.madrid"
-              autoComplete="username"
-              required
-            />
-          </label>
-          <label>
-            Correo electrónico
-            <input
-              type="email"
-              value={adminForm.email}
-              onChange={(event) => setAdminForm({ ...adminForm, email: event.target.value })}
-              placeholder="admin@empresa.com"
-              autoComplete="email"
-              required
-            />
-          </label>
-          <label>
-            PIN / Contraseña de referencia
-            <input
-              value={adminForm.credential}
-              onChange={(event) => setAdminForm({ ...adminForm, credential: event.target.value })}
-              placeholder="PIN o referencia interna"
-              autoComplete="new-password"
-            />
-          </label>
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={adminForm.activo}
-              onChange={(event) => setAdminForm({ ...adminForm, activo: event.target.checked })}
-            />
-            Administrador activo
-          </label>
-          <button className="primary-button" type="submit">
-            <Save size={18} />
-            Guardar administrador
-          </button>
-          {selected && (
-            <button className="secondary-button" type="button" onClick={() => setSelected(null)}>
-              Cancelar edición
-            </button>
-          )}
-        </form>
-      </section>
-
-      <section className="inventory-panel">
-        <div className="panel-heading inventory-heading">
-          <div>
-            <span className="eyebrow">Acceso web</span>
-            <h2>Administradores habilitados</h2>
-          </div>
+        <div className="panel-subheading">
+          <p>Usuarios autorizados para ingresar al panel web de configuración.</p>
           <span className="counter-pill">{admins.length}</span>
         </div>
 
         {error && <div className="error-box">{error}</div>}
         {status && <div className="import-status">{status}</div>}
         {loading ? <div className="loading-box">Cargando administración...</div> : (
-          <div className="cards-list">
-            {admins.map((admin) => (
-              <article className="config-card" key={admin.id}>
-                <div>
-                  <strong>{admin.username}</strong>
-                  <span>{admin.email}</span>
-                  <small>{admin.activo ? 'Activo' : 'Inactivo'}</small>
-                </div>
-                <div className="row-actions">
-                  <button className="icon-button" type="button" onClick={() => setSelected(admin)} aria-label="Editar administrador">
-                    <Pencil size={17} />
-                  </button>
-                  <button className="icon-button danger" type="button" onClick={() => deleteAdmin(admin)} aria-label="Eliminar administrador">
-                    <Trash2 size={17} />
-                  </button>
-                </div>
-              </article>
-            ))}
-            {!admins.length && <div className="empty-inline">Todavía no hay administradores configurados.</div>}
-          </div>
+          admins.length ? (
+            <div className="table-panel admin-table-panel">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nombre de usuario</th>
+                    <th>Correo electrónico</th>
+                    <th>Estado</th>
+                    <th className="action-cell">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {admins.map((admin) => (
+                    <tr key={admin.id}>
+                      <td>
+                        <strong>{admin.username || 'Sin usuario'}</strong>
+                      </td>
+                      <td>{admin.email || 'Sin email'}</td>
+                      <td><AdminStatusBadge active={admin.activo !== false} /></td>
+                      <td className="action-cell">
+                        <button className="icon-button" type="button" onClick={() => setSelected(admin)} aria-label="Editar administrador">
+                          <Pencil size={17} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : <div className="empty-inline">Todavía no hay administradores configurados.</div>
         )}
       </section>
 
@@ -1768,6 +1832,16 @@ function AdministrationManager({ warehouse }) {
           </button>
         </form>
       </section>
+
+      <AdminEditModal
+        admin={selected}
+        form={adminForm}
+        setForm={setAdminForm}
+        saving={savingAdmin}
+        error={modalError}
+        onClose={() => setSelected(null)}
+        onSave={saveAdmin}
+      />
     </div>
   );
 }
