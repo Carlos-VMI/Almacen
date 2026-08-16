@@ -16,6 +16,30 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
+async function findAuthUserByEmail(adminClient: ReturnType<typeof createClient>, email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) return null;
+
+  let page = 1;
+  const perPage = 200;
+
+  while (page <= 25) {
+    const { data, error } = await adminClient.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+
+    const found = data.users.find((user) => String(user.email || '').toLowerCase() === normalizedEmail);
+    if (found) return found;
+    if (data.users.length < perPage) return null;
+    page += 1;
+  }
+
+  return null;
+}
+
+function isMissingAuthUserError(error: { message?: string } | null | undefined) {
+  return /not found|does not exist|no user|user.*missing/i.test(error?.message || '');
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -44,7 +68,7 @@ Deno.serve(async (req) => {
   const { data: callerAdmin, error: callerAdminError } = await adminClient
     .from('almacen_admins')
     .select('id, activo')
-    .eq('id', callerData.user.id)
+    .or(`id.eq.${callerData.user.id},email.eq.${callerData.user.email}`)
     .eq('activo', true)
     .maybeSingle();
 
@@ -69,9 +93,22 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'No puedes eliminar tu propio usuario mientras estás conectado.' }, 400);
     }
 
+    const { data: profile } = await adminClient
+      .from('almacen_admins')
+      .select('email')
+      .eq('id', id)
+      .maybeSingle();
+
     const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(id);
-    if (deleteAuthError && !/not found|does not exist/i.test(deleteAuthError.message)) {
-      return jsonResponse({ error: deleteAuthError.message }, 400);
+    if (deleteAuthError && profile?.email) {
+      try {
+        const authUser = await findAuthUserByEmail(adminClient, profile.email);
+        if (authUser?.id && authUser.id !== id) {
+          await adminClient.auth.admin.deleteUser(authUser.id);
+        }
+      } catch {
+        // El perfil público se elimina igualmente para revocar el acceso a la web.
+      }
     }
 
     const { error: deleteProfileError } = await adminClient
@@ -107,27 +144,46 @@ Deno.serve(async (req) => {
 
     const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(authUserId, updatePayload);
     if (updateAuthError) {
-      const authUserMissing = /not found|does not exist|no user/i.test(updateAuthError.message);
+      const authUserMissing = isMissingAuthUserError(updateAuthError);
 
-      if (!authUserMissing || !password) {
+      if (!authUserMissing) {
         return jsonResponse({ error: updateAuthError.message }, 400);
       }
 
-      const { data: createdUser, error: createMissingAuthError } = await adminClient.auth.admin.createUser({
-        email,
-        password,
-        email_confirm: true,
-        user_metadata: { username },
-      });
+      let authUser = await findAuthUserByEmail(adminClient, email);
 
-      if (createMissingAuthError || !createdUser.user) {
-        return jsonResponse({
-          error: createMissingAuthError?.message || 'No se pudo crear el usuario Auth para este administrador.',
-        }, 400);
+      if (!authUser) {
+        if (!password) {
+          return jsonResponse({ error: 'Indica una nueva contraseña para reparar el acceso de este administrador.' }, 400);
+        }
+
+        const { data: createdUser, error: createMissingAuthError } = await adminClient.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: { username },
+        });
+
+        if (createMissingAuthError || !createdUser.user) {
+          return jsonResponse({
+            error: createMissingAuthError?.message || 'No se pudo crear el acceso para este administrador.',
+          }, 400);
+        }
+
+        authUser = createdUser.user;
+      } else if (password) {
+        const { error: updateExistingAuthError } = await adminClient.auth.admin.updateUserById(authUser.id, {
+          password,
+          user_metadata: { username },
+        });
+
+        if (updateExistingAuthError) {
+          return jsonResponse({ error: updateExistingAuthError.message }, 400);
+        }
       }
 
       const previousProfileId = authUserId;
-      authUserId = createdUser.user.id;
+      authUserId = authUser.id;
 
       const { error: deletePreviousProfileError } = await adminClient
         .from('almacen_admins')
@@ -147,10 +203,24 @@ Deno.serve(async (req) => {
     });
 
     if (createAuthError || !createdUser.user) {
-      return jsonResponse({ error: createAuthError?.message || 'No se pudo crear el usuario Auth.' }, 400);
-    }
+      const existingAuthUser = await findAuthUserByEmail(adminClient, email);
+      if (!existingAuthUser) {
+        return jsonResponse({ error: createAuthError?.message || 'No se pudo crear el acceso.' }, 400);
+      }
 
-    authUserId = createdUser.user.id;
+      const { error: updateExistingError } = await adminClient.auth.admin.updateUserById(existingAuthUser.id, {
+        password,
+        user_metadata: { username },
+      });
+
+      if (updateExistingError) {
+        return jsonResponse({ error: updateExistingError.message }, 400);
+      }
+
+      authUserId = existingAuthUser.id;
+    } else {
+      authUserId = createdUser.user.id;
+    }
   }
 
   const { error: profileError } = await adminClient

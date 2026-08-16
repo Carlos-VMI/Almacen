@@ -1678,6 +1678,7 @@ function AdministrationManager({ warehouse }) {
   const [loading, setLoading] = useState(true);
   const [savingAdmin, setSavingAdmin] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [clearingSettings, setClearingSettings] = useState(false);
   const [error, setError] = useState('');
   const [modalError, setModalError] = useState('');
   const [status, setStatus] = useState('');
@@ -1805,7 +1806,7 @@ function AdministrationManager({ warehouse }) {
     if (!admin?.id) return;
 
     const confirmed = window.confirm(
-      `¿Eliminar el administrador ${admin.email || admin.username}?\n\nSe eliminará también de Supabase Authentication y no podrá acceder a la web.`
+      `¿Eliminar el administrador ${admin.email || admin.username}?\n\nSe revocará su acceso a la web de configuración.`
     );
 
     if (!confirmed) return;
@@ -1861,6 +1862,30 @@ function AdministrationManager({ warehouse }) {
     }
 
     setStatus('Configuración guardada.');
+    loadAdministration();
+  }
+
+  async function clearNotificationEmail() {
+    setClearingSettings(true);
+    setError('');
+    setStatus('');
+
+    const { error: clearError } = await supabase
+      .from('almacen_configuracion')
+      .upsert({
+        almacen_id: warehouse.id,
+        notificacion_reposicion_email: null,
+      }, { onConflict: 'almacen_id' });
+
+    setClearingSettings(false);
+
+    if (clearError) {
+      setError(clearError.message);
+      return;
+    }
+
+    setSettings(emptySystemSettings);
+    setStatus('Correo de notificación eliminado.');
   }
 
   return (
@@ -1908,12 +1933,14 @@ function AdministrationManager({ warehouse }) {
                       <td>{admin.email || 'Sin email'}</td>
                       <td><AdminStatusBadge active={admin.activo !== false} /></td>
                       <td className="action-cell">
-                        <button className="icon-button" type="button" onClick={() => openEditAdmin(admin)} aria-label="Editar administrador">
-                          <Pencil size={17} />
-                        </button>
-                        <button className="icon-button danger" type="button" onClick={() => deleteAdmin(admin)} aria-label="Eliminar administrador">
-                          <Trash2 size={17} />
-                        </button>
+                        <div className="admin-action-buttons">
+                          <button className="icon-button" type="button" onClick={() => openEditAdmin(admin)} aria-label="Editar administrador">
+                            <Pencil size={17} />
+                          </button>
+                          <button className="icon-button danger" type="button" onClick={() => deleteAdmin(admin)} aria-label="Eliminar administrador">
+                            <Trash2 size={17} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1928,9 +1955,13 @@ function AdministrationManager({ warehouse }) {
         <div className="panel-heading">
           <div>
             <span className="eyebrow">Sistema</span>
-            <h2>Configuración del sistema</h2>
+            <h2>Configuración de esta base</h2>
           </div>
           <Settings size={22} />
+        </div>
+        <div className="settings-context">
+          <span>Base activa</span>
+          <strong>{warehouse.nombre}</strong>
         </div>
         <form className="stack-form" onSubmit={saveSettings}>
           <label>
@@ -1942,10 +1973,25 @@ function AdministrationManager({ warehouse }) {
               placeholder="compras@empresa.com"
             />
           </label>
-          <button className="primary-button" type="submit" disabled={savingSettings}>
-            <Save size={18} />
-            {savingSettings ? 'Guardando...' : 'Guardar configuración'}
-          </button>
+          <div className="settings-current">
+            <span>Correo guardado</span>
+            <strong>{settings.notificacion_reposicion_email || 'Sin correo configurado'}</strong>
+          </div>
+          <div className="settings-actions">
+            <button className="primary-button" type="submit" disabled={savingSettings}>
+              <Save size={18} />
+              {savingSettings ? 'Guardando...' : 'Guardar correo'}
+            </button>
+            <button
+              className="secondary-button danger-outline"
+              type="button"
+              onClick={clearNotificationEmail}
+              disabled={clearingSettings || !settings.notificacion_reposicion_email}
+            >
+              <Trash2 size={18} />
+              {clearingSettings ? 'Eliminando...' : 'Borrar correo'}
+            </button>
+          </div>
         </form>
       </section>
 
