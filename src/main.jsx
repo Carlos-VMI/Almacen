@@ -546,10 +546,7 @@ function Login({ onLogin }) {
               <button
                 className="password-toggle"
                 type="button"
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  setShowPassword(true);
-                }}
+                onPointerDown={() => setShowPassword(true)}
                 onPointerUp={() => setShowPassword(false)}
                 onPointerCancel={() => setShowPassword(false)}
                 onPointerLeave={() => setShowPassword(false)}
@@ -1617,10 +1614,7 @@ function AdminEditModal({ open, mode, form, setForm, saving, error, onClose, onS
               <button
                 className="password-toggle"
                 type="button"
-                onPointerDown={(event) => {
-                  event.preventDefault();
-                  setShowPassword(true);
-                }}
+                onPointerDown={() => setShowPassword(true)}
                 onPointerUp={() => setShowPassword(false)}
                 onPointerCancel={() => setShowPassword(false)}
                 onPointerLeave={() => setShowPassword(false)}
@@ -1790,6 +1784,45 @@ function AdministrationManager({ warehouse }) {
     loadAdministration();
   }
 
+  async function deleteAdmin(admin) {
+    if (!admin?.id) return;
+
+    const confirmed = window.confirm(
+      `¿Eliminar el administrador ${admin.email || admin.username}?\n\nSe eliminará también de Supabase Authentication y no podrá acceder a la web.`
+    );
+
+    if (!confirmed) return;
+
+    setError('');
+    setStatus('');
+
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke('admin-upsert-user', {
+        body: {
+          action: 'delete',
+          id: admin.id,
+        },
+      });
+
+      if (functionError) {
+        throw new Error(functionError.message || 'No se pudo eliminar el administrador.');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+    } catch (deleteError) {
+      const fallbackMessage = deleteError?.message?.includes('FunctionsHttpError')
+        ? 'No se pudo ejecutar la función segura admin-upsert-user. Vuelve a desplegar la Edge Function actualizada.'
+        : deleteError?.message || 'No se pudo eliminar el administrador.';
+      setError(fallbackMessage);
+      return;
+    }
+
+    setStatus('Administrador eliminado.');
+    loadAdministration();
+  }
+
   async function saveSettings(event) {
     event.preventDefault();
     setSavingSettings(true);
@@ -1860,6 +1893,9 @@ function AdministrationManager({ warehouse }) {
                       <td className="action-cell">
                         <button className="icon-button" type="button" onClick={() => openEditAdmin(admin)} aria-label="Editar administrador">
                           <Pencil size={17} />
+                        </button>
+                        <button className="icon-button danger" type="button" onClick={() => deleteAdmin(admin)} aria-label="Eliminar administrador">
+                          <Trash2 size={17} />
                         </button>
                       </td>
                     </tr>

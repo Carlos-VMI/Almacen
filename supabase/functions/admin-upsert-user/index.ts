@@ -25,9 +25,9 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Método no permitido.' }, 405);
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') || Deno.env.get('PROJECT_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('ANON_KEY');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SERVICE_ROLE_KEY');
 
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return jsonResponse({ error: 'Faltan variables de entorno de Supabase.' }, 500);
@@ -56,11 +56,38 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}));
+  const action = String(body.action || 'upsert').trim().toLowerCase();
   const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : null;
   const username = String(body.username || '').trim();
   const email = String(body.email || '').trim().toLowerCase();
   const password = String(body.password || '').trim();
   const activo = body.activo !== false;
+
+  if (action === 'delete') {
+    if (!id) {
+      return jsonResponse({ error: 'Falta el id del administrador a eliminar.' }, 400);
+    }
+
+    if (id === callerData.user.id) {
+      return jsonResponse({ error: 'No puedes eliminar tu propio usuario mientras estás conectado.' }, 400);
+    }
+
+    const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(id);
+    if (deleteAuthError && !/not found|does not exist/i.test(deleteAuthError.message)) {
+      return jsonResponse({ error: deleteAuthError.message }, 400);
+    }
+
+    const { error: deleteProfileError } = await adminClient
+      .from('almacen_admins')
+      .delete()
+      .eq('id', id);
+
+    if (deleteProfileError) {
+      return jsonResponse({ error: deleteProfileError.message }, 400);
+    }
+
+    return jsonResponse({ ok: true, deleted: true, id });
+  }
 
   if (!username || !email) {
     return jsonResponse({ error: 'Usuario y correo son obligatorios.' }, 400);
