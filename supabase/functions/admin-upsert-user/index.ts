@@ -26,20 +26,17 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL') || Deno.env.get('PROJECT_URL');
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY') || Deno.env.get('ANON_KEY');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SERVICE_ROLE_KEY');
 
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: 'Faltan variables de entorno de Supabase.' }, 500);
   }
 
   const authHeader = req.headers.get('Authorization') || '';
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-  const { data: callerData, error: callerError } = await userClient.auth.getUser();
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const { data: callerData, error: callerError } = await adminClient.auth.getUser(token);
   if (callerError || !callerData.user) {
     return jsonResponse({ error: 'Sesión no válida.' }, 401);
   }
@@ -110,7 +107,36 @@ Deno.serve(async (req) => {
 
     const { error: updateAuthError } = await adminClient.auth.admin.updateUserById(authUserId, updatePayload);
     if (updateAuthError) {
-      return jsonResponse({ error: updateAuthError.message }, 400);
+      const authUserMissing = /not found|does not exist|no user/i.test(updateAuthError.message);
+
+      if (!authUserMissing || !password) {
+        return jsonResponse({ error: updateAuthError.message }, 400);
+      }
+
+      const { data: createdUser, error: createMissingAuthError } = await adminClient.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { username },
+      });
+
+      if (createMissingAuthError || !createdUser.user) {
+        return jsonResponse({
+          error: createMissingAuthError?.message || 'No se pudo crear el usuario Auth para este administrador.',
+        }, 400);
+      }
+
+      const previousProfileId = authUserId;
+      authUserId = createdUser.user.id;
+
+      const { error: deletePreviousProfileError } = await adminClient
+        .from('almacen_admins')
+        .delete()
+        .eq('id', previousProfileId);
+
+      if (deletePreviousProfileError) {
+        return jsonResponse({ error: deletePreviousProfileError.message }, 400);
+      }
     }
   } else {
     const { data: createdUser, error: createAuthError } = await adminClient.auth.admin.createUser({

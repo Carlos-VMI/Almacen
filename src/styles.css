@@ -899,11 +899,15 @@ tr:last-child td {
 
 .action-cell {
   text-align: center;
-  width: 58px;
+  width: 104px;
 }
 
 .action-cell .icon-button {
-  margin: 0 auto;
+  margin: 0 4px;
+}
+
+.action-cell .icon-button + .icon-button {
+  margin-left: 10px;
 }
 
 .sku-suffix-panel {

@@ -1556,6 +1556,22 @@ function AdminStatusBadge({ active }) {
   );
 }
 
+async function getFunctionErrorMessage(functionError, fallback) {
+  if (!functionError) return fallback;
+
+  try {
+    const context = functionError.context;
+    if (context?.json) {
+      const body = await context.json();
+      if (body?.error) return body.error;
+    }
+  } catch {
+    // Supabase may expose only the generic FunctionsHttpError message.
+  }
+
+  return functionError.message || fallback;
+}
+
 function AdminEditModal({ open, mode, form, setForm, saving, error, onClose, onSave }) {
   const [showPassword, setShowPassword] = useState(false);
   const isCreate = mode === 'create';
@@ -1754,6 +1770,7 @@ function AdministrationManager({ warehouse }) {
     try {
       const { data, error: functionError } = await supabase.functions.invoke('admin-upsert-user', {
         body: {
+          action: adminModalMode === 'create' ? 'create' : 'update',
           id: adminModalMode === 'edit' ? selected?.id : undefined,
           username,
           email,
@@ -1763,7 +1780,7 @@ function AdministrationManager({ warehouse }) {
       });
 
       if (functionError) {
-        throw new Error(functionError.message || 'No se pudo guardar el administrador.');
+        throw new Error(await getFunctionErrorMessage(functionError, 'No se pudo guardar el administrador.'));
       }
 
       if (data?.error) {
@@ -1805,7 +1822,7 @@ function AdministrationManager({ warehouse }) {
       });
 
       if (functionError) {
-        throw new Error(functionError.message || 'No se pudo eliminar el administrador.');
+        throw new Error(await getFunctionErrorMessage(functionError, 'No se pudo eliminar el administrador.'));
       }
 
       if (data?.error) {
@@ -1864,7 +1881,7 @@ function AdministrationManager({ warehouse }) {
         </div>
 
         <div className="panel-subheading">
-          <p>Usuarios autorizados para ingresar al panel web de configuración. Las contraseñas se gestionan en Supabase Auth.</p>
+          <p>Usuarios autorizados para ingresar al panel web de configuración.</p>
           <span className="counter-pill">{admins.length}</span>
         </div>
 
