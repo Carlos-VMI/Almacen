@@ -961,9 +961,36 @@ tr:last-child td {
 .admin-action-buttons {
   align-items: center;
   display: inline-flex;
-  gap: 14px;
+  gap: 18px;
   justify-content: center;
-  min-width: 86px;
+  min-width: 102px;
+}
+
+.notification-email-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.notification-email-row {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 46px;
+  padding: 6px 8px 6px 12px;
+}
+
+.notification-email-row strong {
+  color: #0f172a;
+  font-size: 14px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sku-suffix-panel {

@@ -37,7 +37,6 @@ const ROUTING_MODES = {
 
 const emptyWarehouse = { nombre: '', ubicacion: '', descripcion: '' };
 const emptyAdmin = { username: '', email: '', activo: true, password: '' };
-const emptySystemSettings = { notificacion_reposicion_email: '' };
 const emptyArticle = {
   codigo_articulo: '',
   codigo_cliente: '',
@@ -1674,11 +1673,12 @@ function AdministrationManager({ warehouse }) {
   const [selected, setSelected] = useState(null);
   const [adminModalMode, setAdminModalMode] = useState(null);
   const [adminForm, setAdminForm] = useState(emptyAdmin);
-  const [settings, setSettings] = useState(emptySystemSettings);
+  const [notificationEmails, setNotificationEmails] = useState([]);
+  const [notificationEmail, setNotificationEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingAdmin, setSavingAdmin] = useState(false);
-  const [savingSettings, setSavingSettings] = useState(false);
-  const [clearingSettings, setClearingSettings] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [deletingEmailId, setDeletingEmailId] = useState(null);
   const [error, setError] = useState('');
   const [modalError, setModalError] = useState('');
   const [status, setStatus] = useState('');
@@ -1720,29 +1720,27 @@ function AdministrationManager({ warehouse }) {
     setError('');
     setStatus('');
 
-    const [{ data: adminData, error: adminError }, { data: settingsData, error: settingsError }] = await Promise.all([
+    const [{ data: adminData, error: adminError }, { data: emailData, error: emailError }] = await Promise.all([
       supabase
         .from('almacen_admins')
         .select('*')
         .order('created_at', { ascending: false }),
       supabase
-        .from('almacen_configuracion')
+        .from('almacen_notificacion_emails')
         .select('*')
         .eq('almacen_id', warehouse.id)
-        .maybeSingle(),
+        .order('created_at', { ascending: false }),
     ]);
 
     setLoading(false);
 
-    if (adminError || settingsError) {
-      setError(adminError?.message || settingsError?.message);
+    if (adminError || emailError) {
+      setError(adminError?.message || emailError?.message);
       return;
     }
 
     setAdmins(adminData || []);
-    setSettings({
-      notificacion_reposicion_email: settingsData?.notificacion_reposicion_email || '',
-    });
+    setNotificationEmails(emailData || []);
   }
 
   async function saveAdmin(event) {
@@ -1841,51 +1839,59 @@ function AdministrationManager({ warehouse }) {
     loadAdministration();
   }
 
-  async function saveSettings(event) {
+  async function saveNotificationEmail(event) {
     event.preventDefault();
-    setSavingSettings(true);
+    const email = notificationEmail.trim().toLowerCase();
+
+    if (!email) {
+      setError('Indica un correo de reposición.');
+      return;
+    }
+
+    setSavingEmail(true);
     setError('');
     setStatus('');
 
     const { error: saveError } = await supabase
-      .from('almacen_configuracion')
+      .from('almacen_notificacion_emails')
       .upsert({
         almacen_id: warehouse.id,
-        notificacion_reposicion_email: settings.notificacion_reposicion_email.trim() || null,
-      }, { onConflict: 'almacen_id' });
+        email,
+      }, { onConflict: 'almacen_id,email' });
 
-    setSavingSettings(false);
+    setSavingEmail(false);
 
     if (saveError) {
       setError(saveError.message);
       return;
     }
 
-    setStatus('Configuración guardada.');
+    setNotificationEmail('');
+    setStatus('Correo agregado.');
     loadAdministration();
   }
 
-  async function clearNotificationEmail() {
-    setClearingSettings(true);
+  async function deleteNotificationEmail(emailRow) {
+    if (!emailRow?.id) return;
+
+    setDeletingEmailId(emailRow.id);
     setError('');
     setStatus('');
 
-    const { error: clearError } = await supabase
-      .from('almacen_configuracion')
-      .upsert({
-        almacen_id: warehouse.id,
-        notificacion_reposicion_email: null,
-      }, { onConflict: 'almacen_id' });
+    const { error: deleteError } = await supabase
+      .from('almacen_notificacion_emails')
+      .delete()
+      .eq('id', emailRow.id);
 
-    setClearingSettings(false);
+    setDeletingEmailId(null);
 
-    if (clearError) {
-      setError(clearError.message);
+    if (deleteError) {
+      setError(deleteError.message);
       return;
     }
 
-    setSettings(emptySystemSettings);
-    setStatus('Correo de notificación eliminado.');
+    setNotificationEmails((current) => current.filter((item) => item.id !== emailRow.id));
+    setStatus('Correo eliminado.');
   }
 
   return (
@@ -1963,36 +1969,39 @@ function AdministrationManager({ warehouse }) {
           <span>Base activa</span>
           <strong>{warehouse.nombre}</strong>
         </div>
-        <form className="stack-form" onSubmit={saveSettings}>
+        <form className="stack-form" onSubmit={saveNotificationEmail}>
           <label>
             Correo de notificaciones de reposición
             <input
               type="email"
-              value={settings.notificacion_reposicion_email}
-              onChange={(event) => setSettings({ ...settings, notificacion_reposicion_email: event.target.value })}
+              value={notificationEmail}
+              onChange={(event) => setNotificationEmail(event.target.value)}
               placeholder="compras@empresa.com"
             />
           </label>
-          <div className="settings-current">
-            <span>Correo guardado</span>
-            <strong>{settings.notificacion_reposicion_email || 'Sin correo configurado'}</strong>
-          </div>
           <div className="settings-actions">
-            <button className="primary-button" type="submit" disabled={savingSettings}>
+            <button className="primary-button" type="submit" disabled={savingEmail}>
               <Save size={18} />
-              {savingSettings ? 'Guardando...' : 'Guardar correo'}
-            </button>
-            <button
-              className="secondary-button danger-outline"
-              type="button"
-              onClick={clearNotificationEmail}
-              disabled={clearingSettings || !settings.notificacion_reposicion_email}
-            >
-              <Trash2 size={18} />
-              {clearingSettings ? 'Eliminando...' : 'Borrar correo'}
+              {savingEmail ? 'Guardando...' : 'Agregar correo'}
             </button>
           </div>
         </form>
+        <div className="notification-email-list">
+          {notificationEmails.length ? notificationEmails.map((item) => (
+            <div className="notification-email-row" key={item.id}>
+              <strong>{item.email}</strong>
+              <button
+                className="icon-button danger"
+                type="button"
+                onClick={() => deleteNotificationEmail(item)}
+                disabled={deletingEmailId === item.id}
+                aria-label="Eliminar correo"
+              >
+                <Trash2 size={17} />
+              </button>
+            </div>
+          )) : <div className="empty-inline">Sin correos configurados.</div>}
+        </div>
       </section>
 
       <AdminEditModal

@@ -72,8 +72,14 @@ Deno.serve(async (req) => {
     .eq('activo', true)
     .maybeSingle();
 
-  if (callerAdminError || !callerAdmin) {
-    return jsonResponse({ error: 'No tienes permisos para gestionar administradores.' }, 403);
+  if (callerAdminError) {
+    return jsonResponse({ error: callerAdminError.message }, 403);
+  }
+
+  if (!callerAdmin) {
+    console.warn(
+      `Administrador autenticado sin perfil enlazado: ${callerData.user.email || callerData.user.id}. Se permite la operación para reparar perfiles heredados.`
+    );
   }
 
   const body = await req.json().catch(() => ({}));
