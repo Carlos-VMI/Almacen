@@ -53,11 +53,13 @@ create table if not exists public.almacen_admins (
   id uuid primary key default gen_random_uuid(),
   username text not null,
   email text not null,
-  credential text,
   activo boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.almacen_admins
+  drop column if exists credential;
 
 create table if not exists public.almacen_configuracion (
   id uuid primary key default gen_random_uuid(),

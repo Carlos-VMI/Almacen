@@ -36,7 +36,7 @@ const ROUTING_MODES = {
 };
 
 const emptyWarehouse = { nombre: '', ubicacion: '', descripcion: '' };
-const emptyAdmin = { username: '', email: '', activo: true, newPassword: '' };
+const emptyAdmin = { username: '', email: '', activo: true, password: '' };
 const emptySystemSettings = { notificacion_reposicion_email: '' };
 const emptyArticle = {
   codigo_articulo: '',
@@ -464,6 +464,7 @@ function buildImportRecords(rows, warehouseId) {
 function Login({ onLogin }) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -533,14 +534,31 @@ function Login({ onLogin }) {
 
           <label>
             Contraseña
-            <input
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="Contraseña"
-              autoComplete="current-password"
-              required
-            />
+            <div className="password-field">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Contraseña"
+                autoComplete="current-password"
+                required
+              />
+              <button
+                className="password-toggle"
+                type="button"
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  setShowPassword(true);
+                }}
+                onPointerUp={() => setShowPassword(false)}
+                onPointerCancel={() => setShowPassword(false)}
+                onPointerLeave={() => setShowPassword(false)}
+                onBlur={() => setShowPassword(false)}
+                aria-label="Mantener presionado para ver contraseña"
+              >
+                <Eye size={17} />
+              </button>
+            </div>
           </label>
 
           {error && <div className="error-box">{error}</div>}
@@ -1541,10 +1559,11 @@ function AdminStatusBadge({ active }) {
   );
 }
 
-function AdminEditModal({ admin, form, setForm, saving, error, onClose, onSave }) {
+function AdminEditModal({ open, mode, form, setForm, saving, error, onClose, onSave }) {
   const [showPassword, setShowPassword] = useState(false);
+  const isCreate = mode === 'create';
 
-  if (!admin) return null;
+  if (!open) return null;
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -1552,7 +1571,7 @@ function AdminEditModal({ admin, form, setForm, saving, error, onClose, onSave }
         <div className="modal-heading">
           <div>
             <span className="eyebrow">Acceso web</span>
-            <h2 id="admin-edit-title">Editar administrador</h2>
+            <h2 id="admin-edit-title">{isCreate ? 'Nuevo administrador' : 'Editar administrador'}</h2>
           </div>
           <button className="icon-button" type="button" onClick={onClose} aria-label="Cerrar edición">
             <X size={18} />
@@ -1576,31 +1595,42 @@ function AdminEditModal({ admin, form, setForm, saving, error, onClose, onSave }
             <input
               type="email"
               value={form.email}
-              disabled
+              onChange={(event) => setForm({ ...form, email: event.target.value })}
+              disabled={!isCreate}
               placeholder="admin@empresa.com"
               autoComplete="email"
+              required={isCreate}
             />
           </label>
 
           <label>
-            Nueva contraseña
+            {isCreate ? 'Contraseña' : 'Nueva contraseña'}
             <div className="password-field">
               <input
                 type={showPassword ? 'text' : 'password'}
-                value={form.newPassword}
-                onChange={(event) => setForm({ ...form, newPassword: event.target.value })}
-                placeholder="Dejar vacío para no cambiar"
+                value={form.password}
+                onChange={(event) => setForm({ ...form, password: event.target.value })}
+                placeholder={isCreate ? 'Contraseña de acceso' : 'Dejar vacío para no cambiar'}
                 autoComplete="new-password"
+                required={isCreate}
               />
               <button
                 className="password-toggle"
                 type="button"
-                onClick={() => setShowPassword((current) => !current)}
-                aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  setShowPassword(true);
+                }}
+                onPointerUp={() => setShowPassword(false)}
+                onPointerCancel={() => setShowPassword(false)}
+                onPointerLeave={() => setShowPassword(false)}
+                onBlur={() => setShowPassword(false)}
+                aria-label="Mantener presionado para ver contraseña"
               >
                 {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
               </button>
             </div>
+            {!isCreate ? <small>Opcional. Si queda vacío, no cambia.</small> : null}
           </label>
 
           <label className="check-row">
@@ -1620,7 +1650,7 @@ function AdminEditModal({ admin, form, setForm, saving, error, onClose, onSave }
             </button>
             <button className="primary-button" type="submit" disabled={saving}>
               <Save size={18} />
-              {saving ? 'Guardando...' : 'Guardar cambios'}
+              {saving ? 'Guardando...' : isCreate ? 'Crear administrador' : 'Guardar cambios'}
             </button>
           </div>
         </form>
@@ -1632,6 +1662,7 @@ function AdminEditModal({ admin, form, setForm, saving, error, onClose, onSave }
 function AdministrationManager({ warehouse }) {
   const [admins, setAdmins] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [adminModalMode, setAdminModalMode] = useState(null);
   const [adminForm, setAdminForm] = useState(emptyAdmin);
   const [settings, setSettings] = useState(emptySystemSettings);
   const [loading, setLoading] = useState(true);
@@ -1646,14 +1677,32 @@ function AdministrationManager({ warehouse }) {
   }, [warehouse.id]);
 
   useEffect(() => {
-    setAdminForm(selected ? {
+    setAdminForm(selected && adminModalMode === 'edit' ? {
       username: selected.username || '',
       email: selected.email || '',
       activo: selected.activo !== false,
-      newPassword: '',
+      password: '',
     } : emptyAdmin);
     setModalError('');
-  }, [selected]);
+  }, [adminModalMode, selected]);
+
+  function openCreateAdmin() {
+    setSelected(null);
+    setAdminForm(emptyAdmin);
+    setAdminModalMode('create');
+  }
+
+  function openEditAdmin(admin) {
+    setSelected(admin);
+    setAdminModalMode('edit');
+  }
+
+  function closeAdminModal() {
+    setSelected(null);
+    setAdminForm(emptyAdmin);
+    setAdminModalMode(null);
+    setModalError('');
+  }
 
   async function loadAdministration() {
     setLoading(true);
@@ -1687,49 +1736,57 @@ function AdministrationManager({ warehouse }) {
 
   async function saveAdmin(event) {
     event.preventDefault();
-    if (!selected?.id) return;
 
     setModalError('');
     setStatus('');
     setSavingAdmin(true);
 
-    const record = {
-      username: adminForm.username.trim(),
-      activo: Boolean(adminForm.activo),
-    };
+    const username = adminForm.username.trim();
+    const email = adminForm.email.trim().toLowerCase();
+    const password = adminForm.password.trim();
 
-    const { error: saveError } = await supabase
-      .from('almacen_admins')
-      .update(record)
-      .eq('id', selected.id);
-
-    if (saveError) {
-      setModalError(saveError.message);
+    if (!username || !email) {
+      setModalError('Completa usuario y correo electrónico.');
       setSavingAdmin(false);
       return;
     }
 
-    if (adminForm.newPassword.trim()) {
-      /*
-       * Cambio de contraseña:
-       * Aquí se debe llamar a una Edge Function de Supabase que utilice
-       * supabase.auth.admin.updateUserById para cambiar la contraseña en el
-       * esquema interno, enviando el id y el nuevo password.
-       *
-       * No se debe guardar la contraseña en almacen_admins ni usar la API
-       * cliente estándar, porque el frontend no puede cambiar la contraseña
-       * de otro usuario sin Service Role Key.
-       */
-      console.info('Cambio de contraseña pendiente de Edge Function', {
-        id: selected.id,
-        hasNewPassword: true,
+    if (adminModalMode === 'create' && !password) {
+      setModalError('Indica una contraseña para el nuevo administrador.');
+      setSavingAdmin(false);
+      return;
+    }
+
+    try {
+      const { data, error: functionError } = await supabase.functions.invoke('admin-upsert-user', {
+        body: {
+          id: adminModalMode === 'edit' ? selected?.id : undefined,
+          username,
+          email,
+          activo: Boolean(adminForm.activo),
+          password: password || undefined,
+        },
       });
+
+      if (functionError) {
+        throw new Error(functionError.message || 'No se pudo guardar el administrador.');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+    } catch (saveError) {
+      const fallbackMessage = saveError?.message?.includes('FunctionsHttpError')
+        ? 'No se pudo ejecutar la función segura admin-upsert-user. Despliega la Edge Function incluida en el proyecto.'
+        : saveError?.message || 'No se pudo guardar el administrador.';
+      setModalError(fallbackMessage);
+      setSavingAdmin(false);
+      return;
     }
 
     setSavingAdmin(false);
-    setSelected(null);
-    setAdminForm(emptyAdmin);
-    setStatus('Administrador guardado.');
+    closeAdminModal();
+    setStatus(adminModalMode === 'create' ? 'Administrador creado.' : 'Administrador guardado.');
     loadAdministration();
   }
 
@@ -1764,11 +1821,17 @@ function AdministrationManager({ warehouse }) {
             <span className="eyebrow">Administración</span>
             <h2>Gestión de administradores</h2>
           </div>
-          <ShieldCheck size={22} />
+          <div className="heading-actions">
+            <button className="primary-button" type="button" onClick={openCreateAdmin}>
+              <Plus size={18} />
+              Nuevo administrador
+            </button>
+            <ShieldCheck size={22} />
+          </div>
         </div>
 
         <div className="panel-subheading">
-          <p>Usuarios autorizados para ingresar al panel web de configuración.</p>
+          <p>Usuarios autorizados para ingresar al panel web de configuración. Las contraseñas se gestionan en Supabase Auth.</p>
           <span className="counter-pill">{admins.length}</span>
         </div>
 
@@ -1795,7 +1858,7 @@ function AdministrationManager({ warehouse }) {
                       <td>{admin.email || 'Sin email'}</td>
                       <td><AdminStatusBadge active={admin.activo !== false} /></td>
                       <td className="action-cell">
-                        <button className="icon-button" type="button" onClick={() => setSelected(admin)} aria-label="Editar administrador">
+                        <button className="icon-button" type="button" onClick={() => openEditAdmin(admin)} aria-label="Editar administrador">
                           <Pencil size={17} />
                         </button>
                       </td>
@@ -1834,12 +1897,13 @@ function AdministrationManager({ warehouse }) {
       </section>
 
       <AdminEditModal
-        admin={selected}
+        open={Boolean(adminModalMode)}
+        mode={adminModalMode}
         form={adminForm}
         setForm={setAdminForm}
         saving={savingAdmin}
         error={modalError}
-        onClose={() => setSelected(null)}
+        onClose={closeAdminModal}
         onSave={saveAdmin}
       />
     </div>
