@@ -114,6 +114,15 @@ td {
   line-height: 1.1;
 }
 
+.login-brand {
+  color: #0b74bd;
+  display: block;
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin-bottom: 6px;
+}
+
 .login-panel p {
   color: #64748b;
   margin-top: 10px;
@@ -309,12 +318,21 @@ select:focus {
 }
 
 .home-grid,
-.content-grid {
+.content-grid,
+.admin-grid {
   align-items: start;
   display: grid;
   gap: 18px;
   grid-template-columns: 440px minmax(0, 1fr);
   margin-top: 14px;
+}
+
+.admin-grid {
+  grid-template-columns: 420px minmax(0, 1fr);
+}
+
+.admin-settings-panel {
+  grid-column: 1 / -1;
 }
 
 .form-panel,
@@ -428,10 +446,8 @@ select:focus {
   display: block;
   height: 8px;
   margin: 0;
-  left: 50%;
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  position: static;
+  transform: none;
   width: 8px;
   caret-color: transparent;
   cursor: inherit !important;
@@ -1367,7 +1383,8 @@ tr:last-child td {
 
 @media (max-width: 1050px) {
   .home-grid,
-  .content-grid {
+  .content-grid,
+  .admin-grid {
     grid-template-columns: 1fr;
   }
 }

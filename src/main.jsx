@@ -14,6 +14,8 @@ import {
   Plus,
   Save,
   Search,
+  Settings,
+  ShieldCheck,
   Trash2,
   UserPlus,
   Users,
@@ -32,6 +34,8 @@ const ROUTING_MODES = {
 };
 
 const emptyWarehouse = { nombre: '', ubicacion: '', descripcion: '' };
+const emptyAdmin = { username: '', email: '', credential: '', activo: true };
+const emptySystemSettings = { notificacion_reposicion_email: '' };
 const emptyArticle = {
   codigo_articulo: '',
   codigo_cliente: '',
@@ -383,6 +387,7 @@ function formatRole(value) {
 function roleLabel(value) {
   const role = formatRole(value);
   if (role === 'administrador') return 'Administrador';
+  if (role === 'supervisor') return 'Supervisor';
   if (role === 'repositor') return 'Repositor';
   return 'Operario';
 }
@@ -455,7 +460,7 @@ function buildImportRecords(rows, warehouseId) {
 }
 
 function Login({ onLogin }) {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -465,8 +470,28 @@ function Login({ onLogin }) {
     setLoading(true);
     setError('');
 
+    const normalizedIdentifier = identifier.trim();
+    let authEmail = normalizedIdentifier;
+
+    if (!normalizedIdentifier.includes('@')) {
+      const { data: adminUser, error: adminLookupError } = await supabase
+        .from('almacen_admins')
+        .select('email')
+        .eq('username', normalizedIdentifier)
+        .eq('activo', true)
+        .maybeSingle();
+
+      if (adminLookupError || !adminUser?.email) {
+        setLoading(false);
+        setError('Usuario o contraseña incorrectos.');
+        return;
+      }
+
+      authEmail = adminUser.email;
+    }
+
     const { data, error: loginError } = await supabase.auth.signInWithPassword({
-      email,
+      email: authEmail,
       password,
     });
 
@@ -487,18 +512,19 @@ function Login({ onLogin }) {
           <div className="brand-mark">
             <Boxes size={30} />
           </div>
+          <span className="login-brand">Smart WMS</span>
           <h1>Bienvenidos</h1>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
           <label>
-            Usuario
+            Usuario o Correo electrónico
             <input
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              placeholder="usuario@empresa.com"
-              autoComplete="email"
+              type="text"
+              value={identifier}
+              onChange={(event) => setIdentifier(event.target.value)}
+              placeholder="usuario o usuario@empresa.com"
+              autoComplete="username"
               required
             />
           </label>
@@ -1157,6 +1183,7 @@ function OperatorsManager({ warehouse }) {
             Rol
             <select value={form.rol} onChange={(event) => setForm({ ...form, rol: event.target.value })}>
               <option value="administrador">Administrador</option>
+              <option value="supervisor">Supervisor</option>
               <option value="repositor">Repositor</option>
               <option value="operario">Operario</option>
             </select>
@@ -1499,6 +1526,247 @@ function BoxCatalogManager({ warehouse }) {
           ))}
           {!boxTypes.length && <div className="empty-inline">Crea cubetas estándar para construir las baldas.</div>}
         </div>
+      </section>
+    </div>
+  );
+}
+
+function AdministrationManager({ warehouse }) {
+  const [admins, setAdmins] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [adminForm, setAdminForm] = useState(emptyAdmin);
+  const [settings, setSettings] = useState(emptySystemSettings);
+  const [loading, setLoading] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    loadAdministration();
+  }, [warehouse.id]);
+
+  useEffect(() => {
+    setAdminForm(selected ? {
+      username: selected.username || '',
+      email: selected.email || '',
+      credential: selected.credential || '',
+      activo: selected.activo !== false,
+    } : emptyAdmin);
+  }, [selected]);
+
+  async function loadAdministration() {
+    setLoading(true);
+    setError('');
+    setStatus('');
+
+    const [{ data: adminData, error: adminError }, { data: settingsData, error: settingsError }] = await Promise.all([
+      supabase
+        .from('almacen_admins')
+        .select('*')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('almacen_configuracion')
+        .select('*')
+        .eq('almacen_id', warehouse.id)
+        .maybeSingle(),
+    ]);
+
+    setLoading(false);
+
+    if (adminError || settingsError) {
+      setError(adminError?.message || settingsError?.message);
+      return;
+    }
+
+    setAdmins(adminData || []);
+    setSettings({
+      notificacion_reposicion_email: settingsData?.notificacion_reposicion_email || '',
+    });
+  }
+
+  async function saveAdmin(event) {
+    event.preventDefault();
+    setError('');
+    setStatus('');
+
+    const record = {
+      username: adminForm.username.trim(),
+      email: adminForm.email.trim(),
+      credential: adminForm.credential.trim(),
+      activo: Boolean(adminForm.activo),
+    };
+
+    const request = selected?.id
+      ? supabase.from('almacen_admins').update(record).eq('id', selected.id)
+      : supabase.from('almacen_admins').insert(record);
+    const { error: saveError } = await request;
+
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+
+    setSelected(null);
+    setAdminForm(emptyAdmin);
+    setStatus('Administrador guardado.');
+    loadAdministration();
+  }
+
+  async function deleteAdmin(admin) {
+    if (!window.confirm(`Eliminar el administrador "${admin.username}"?`)) return;
+    const { error: deleteError } = await supabase.from('almacen_admins').delete().eq('id', admin.id);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    if (selected?.id === admin.id) setSelected(null);
+    setStatus('Administrador eliminado.');
+    loadAdministration();
+  }
+
+  async function saveSettings(event) {
+    event.preventDefault();
+    setSavingSettings(true);
+    setError('');
+    setStatus('');
+
+    const { error: saveError } = await supabase
+      .from('almacen_configuracion')
+      .upsert({
+        almacen_id: warehouse.id,
+        notificacion_reposicion_email: settings.notificacion_reposicion_email.trim() || null,
+      }, { onConflict: 'almacen_id' });
+
+    setSavingSettings(false);
+
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+
+    setStatus('Configuración guardada.');
+  }
+
+  return (
+    <div className="admin-grid">
+      <section className="form-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Administración</span>
+            <h2>{selected ? 'Editar administrador' : 'Gestión de administradores'}</h2>
+          </div>
+          <ShieldCheck size={22} />
+        </div>
+
+        <form className="stack-form" onSubmit={saveAdmin}>
+          <label>
+            Nombre de usuario
+            <input
+              value={adminForm.username}
+              onChange={(event) => setAdminForm({ ...adminForm, username: event.target.value })}
+              placeholder="admin.madrid"
+              autoComplete="username"
+              required
+            />
+          </label>
+          <label>
+            Correo electrónico
+            <input
+              type="email"
+              value={adminForm.email}
+              onChange={(event) => setAdminForm({ ...adminForm, email: event.target.value })}
+              placeholder="admin@empresa.com"
+              autoComplete="email"
+              required
+            />
+          </label>
+          <label>
+            PIN / Contraseña de referencia
+            <input
+              value={adminForm.credential}
+              onChange={(event) => setAdminForm({ ...adminForm, credential: event.target.value })}
+              placeholder="PIN o referencia interna"
+              autoComplete="new-password"
+            />
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={adminForm.activo}
+              onChange={(event) => setAdminForm({ ...adminForm, activo: event.target.checked })}
+            />
+            Administrador activo
+          </label>
+          <button className="primary-button" type="submit">
+            <Save size={18} />
+            Guardar administrador
+          </button>
+          {selected && (
+            <button className="secondary-button" type="button" onClick={() => setSelected(null)}>
+              Cancelar edición
+            </button>
+          )}
+        </form>
+      </section>
+
+      <section className="inventory-panel">
+        <div className="panel-heading inventory-heading">
+          <div>
+            <span className="eyebrow">Acceso web</span>
+            <h2>Administradores habilitados</h2>
+          </div>
+          <span className="counter-pill">{admins.length}</span>
+        </div>
+
+        {error && <div className="error-box">{error}</div>}
+        {status && <div className="import-status">{status}</div>}
+        {loading ? <div className="loading-box">Cargando administración...</div> : (
+          <div className="cards-list">
+            {admins.map((admin) => (
+              <article className="config-card" key={admin.id}>
+                <div>
+                  <strong>{admin.username}</strong>
+                  <span>{admin.email}</span>
+                  <small>{admin.activo ? 'Activo' : 'Inactivo'}</small>
+                </div>
+                <div className="row-actions">
+                  <button className="icon-button" type="button" onClick={() => setSelected(admin)} aria-label="Editar administrador">
+                    <Pencil size={17} />
+                  </button>
+                  <button className="icon-button danger" type="button" onClick={() => deleteAdmin(admin)} aria-label="Eliminar administrador">
+                    <Trash2 size={17} />
+                  </button>
+                </div>
+              </article>
+            ))}
+            {!admins.length && <div className="empty-inline">Todavía no hay administradores configurados.</div>}
+          </div>
+        )}
+      </section>
+
+      <section className="form-panel admin-settings-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Sistema</span>
+            <h2>Configuración del sistema</h2>
+          </div>
+          <Settings size={22} />
+        </div>
+        <form className="stack-form" onSubmit={saveSettings}>
+          <label>
+            Correo de notificaciones de reposición
+            <input
+              type="email"
+              value={settings.notificacion_reposicion_email}
+              onChange={(event) => setSettings({ ...settings, notificacion_reposicion_email: event.target.value })}
+              placeholder="compras@empresa.com"
+            />
+          </label>
+          <button className="primary-button" type="submit" disabled={savingSettings}>
+            <Save size={18} />
+            {savingSettings ? 'Guardando...' : 'Guardar configuración'}
+          </button>
+        </form>
       </section>
     </div>
   );
@@ -1886,6 +2154,58 @@ function ShelvingManager({ warehouse }) {
     });
   }
 
+  function exportLayout() {
+    const rows = [];
+
+    modules.forEach((module) => {
+      const controller = controllersById.get(module.controlador_id);
+      for (let numero = 1; numero <= 8; numero += 1) {
+        const key = `${module.id}-${numero}`;
+        const record = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module), module, controllersById);
+        const widthLimit = moduleShelfWidth(module);
+        const occupiedWidth = record.cajones.reduce((sum, item) => sum + toNumber(item.ancho_cm, 0), 0);
+
+        record.cajones.forEach((cajon) => {
+          rows.push({
+            Modulo: module.nombre,
+            Estante: `E${numero}`,
+            Cubeta: cajon.cubeta_codigo,
+            Nombre: cajon.nombre,
+            AnchoCm: toNumber(cajon.ancho_cm, 0),
+            Controlador: controller?.nombre || '',
+            Puerto: module.canal_led || '',
+            Ruta: normalizeRoutingMode(module.routing_mode) === ROUTING_MODES.ZIGZAG ? 'Zig-Zag' : 'Snake',
+            StartLed: cajon.startLed,
+            EndLed: cajon.endLed,
+            LedCount: cajon.ledCount,
+          });
+        });
+
+        const freeWidth = Math.max(0, widthLimit - occupiedWidth);
+        if (freeWidth > 0) {
+          rows.push({
+            Modulo: module.nombre,
+            Estante: `E${numero}`,
+            Cubeta: 'Libre',
+            Nombre: '',
+            AnchoCm: freeWidth,
+            Controlador: controller?.nombre || '',
+            Puerto: module.canal_led || '',
+            Ruta: normalizeRoutingMode(module.routing_mode) === ROUTING_MODES.ZIGZAG ? 'Zig-Zag' : 'Snake',
+            StartLed: '',
+            EndLed: '',
+            LedCount: '',
+          });
+        }
+      }
+    });
+
+    const workbook = XLSX.utils.book_new();
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Layout');
+    XLSX.writeFile(workbook, `layout-${warehouse.nombre || 'almacen'}.xlsx`);
+  }
+
   return (
     <section className="inventory-panel">
       <div className="panel-heading inventory-heading">
@@ -1893,6 +2213,10 @@ function ShelvingManager({ warehouse }) {
           <span className="eyebrow">Configuración de estantería</span>
           <h2>Layout de módulos y baldas</h2>
         </div>
+        <button className="primary-button" type="button" onClick={exportLayout}>
+          <FileSpreadsheet size={17} />
+          Exportar Layout
+        </button>
       </div>
 
       <div className="catalog-strip">
@@ -2128,6 +2452,10 @@ function WarehouseWorkspace({ warehouse }) {
           <Cpu size={17} />
           Controladores IoT
         </button>
+        <button className={tab === 'administracion' ? 'active' : ''} onClick={() => setTab('administracion')}>
+          <Settings size={17} />
+          Administración
+        </button>
         <button className="import-tab" type="button" onClick={() => fileInputRef.current?.click()}>
           <FileSpreadsheet size={17} />
           Importar
@@ -2146,8 +2474,9 @@ function WarehouseWorkspace({ warehouse }) {
       {tab === 'articulos' && <ArticleManager warehouse={warehouse} refreshKey={articleRefreshKey} />}
       {tab === 'usuarios' && <OperatorsManager warehouse={warehouse} />}
       {tab === 'estanteria' && <ShelvingManager warehouse={warehouse} />}
-      {tab === 'iot' && <IoTControllersManager warehouse={warehouse} />}
       {tab === 'cubetas' && <BoxCatalogManager warehouse={warehouse} />}
+      {tab === 'iot' && <IoTControllersManager warehouse={warehouse} />}
+      {tab === 'administracion' && <AdministrationManager warehouse={warehouse} />}
     </>
   );
 }

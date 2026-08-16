@@ -49,6 +49,24 @@ alter table public.almacen_operadores
   add column if not exists apellido text,
   alter column email drop not null;
 
+create table if not exists public.almacen_admins (
+  id uuid primary key default gen_random_uuid(),
+  username text not null,
+  email text not null,
+  credential text,
+  activo boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.almacen_configuracion (
+  id uuid primary key default gen_random_uuid(),
+  almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
+  notificacion_reposicion_email text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.almacen_iot_controladores (
   id uuid primary key default gen_random_uuid(),
   almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
@@ -123,6 +141,9 @@ create unique index if not exists almacen_bases_nombre_key on public.almacen_bas
 create unique index if not exists almacen_articulos_codigo_key on public.almacen_articulos (almacen_id, codigo_articulo);
 create unique index if not exists almacen_articulos_sku_key on public.almacen_articulos (almacen_id, sku);
 create unique index if not exists almacen_operadores_email_key on public.almacen_operadores (almacen_id, email);
+create unique index if not exists almacen_admins_username_key on public.almacen_admins (username);
+create unique index if not exists almacen_admins_email_key on public.almacen_admins (email);
+create unique index if not exists almacen_configuracion_almacen_key on public.almacen_configuracion (almacen_id);
 create unique index if not exists almacen_iot_controladores_nombre_key on public.almacen_iot_controladores (almacen_id, nombre);
 create unique index if not exists almacen_cubetas_catalogo_codigo_key on public.almacen_cubetas_catalogo (almacen_id, codigo);
 create unique index if not exists almacen_modulos_orden_key on public.almacen_modulos (almacen_id, orden);
@@ -149,6 +170,16 @@ for each row execute function public.set_updated_at();
 drop trigger if exists almacen_operadores_set_updated_at on public.almacen_operadores;
 create trigger almacen_operadores_set_updated_at
 before update on public.almacen_operadores
+for each row execute function public.set_updated_at();
+
+drop trigger if exists almacen_admins_set_updated_at on public.almacen_admins;
+create trigger almacen_admins_set_updated_at
+before update on public.almacen_admins
+for each row execute function public.set_updated_at();
+
+drop trigger if exists almacen_configuracion_set_updated_at on public.almacen_configuracion;
+create trigger almacen_configuracion_set_updated_at
+before update on public.almacen_configuracion
 for each row execute function public.set_updated_at();
 
 drop trigger if exists almacen_iot_controladores_set_updated_at on public.almacen_iot_controladores;
@@ -182,6 +213,8 @@ for each row execute function public.set_updated_at();
 alter table public.almacen_bases enable row level security;
 alter table public.almacen_articulos enable row level security;
 alter table public.almacen_operadores enable row level security;
+alter table public.almacen_admins enable row level security;
+alter table public.almacen_configuracion enable row level security;
 alter table public.almacen_iot_controladores enable row level security;
 alter table public.almacen_cubetas_catalogo enable row level security;
 alter table public.almacen_modulos enable row level security;
@@ -190,6 +223,9 @@ alter table public.almacen_estantes enable row level security;
 drop policy if exists "Usuarios autenticados gestionan bases de almacen" on public.almacen_bases;
 drop policy if exists "Usuarios autenticados gestionan articulos de almacen" on public.almacen_articulos;
 drop policy if exists "Usuarios autenticados gestionan operadores de almacen" on public.almacen_operadores;
+drop policy if exists "Usuarios autenticados gestionan administradores web" on public.almacen_admins;
+drop policy if exists "Lectura publica limitada para login por username" on public.almacen_admins;
+drop policy if exists "Usuarios autenticados gestionan configuracion de almacen" on public.almacen_configuracion;
 drop policy if exists "Usuarios autenticados gestionan controladores iot de almacen" on public.almacen_iot_controladores;
 drop policy if exists "Usuarios autenticados gestionan catalogo de cubetas" on public.almacen_cubetas_catalogo;
 drop policy if exists "Usuarios autenticados gestionan modulos de almacen" on public.almacen_modulos;
@@ -212,6 +248,26 @@ on public.almacen_operadores for all
 to authenticated
 using (true)
 with check (true);
+
+create policy "Usuarios autenticados gestionan administradores web"
+on public.almacen_admins for all
+to authenticated
+using (true)
+with check (true);
+
+create policy "Lectura publica limitada para login por username"
+on public.almacen_admins for select
+to anon
+using (activo = true);
+
+create policy "Usuarios autenticados gestionan configuracion de almacen"
+on public.almacen_configuracion for all
+to authenticated
+using (true)
+with check (true);
+
+revoke all on public.almacen_admins from anon;
+grant select (username, email, activo) on public.almacen_admins to anon;
 
 create policy "Usuarios autenticados gestionan controladores iot de almacen"
 on public.almacen_iot_controladores for all
