@@ -548,7 +548,7 @@ async function exportarLayoutExcel({
   workbook.creator = 'Smart WMS';
   workbook.created = new Date();
 
-  const dataSheet = workbook.addWorksheet('Layout');
+  const dataSheet = workbook.addWorksheet('Datos');
   dataSheet.columns = [
     { header: 'Modulo', key: 'modulo', width: 24 },
     { header: 'Estante', key: 'estante', width: 10 },
@@ -623,7 +623,7 @@ async function exportarLayoutExcel({
     });
   });
 
-  const visualSheet = workbook.addWorksheet('Hoja 2');
+  const visualSheet = workbook.addWorksheet('Layout');
   const BASE_CELL_CM = 12.5;
   const MAX_GRID_UNITS = 8;
   visualSheet.getColumn(1).width = 8;
@@ -647,7 +647,7 @@ async function exportarLayoutExcel({
       right: { style: 'medium', color: { argb: 'FF0B74BD' } },
     };
     moduleTitleRow.height = 24;
-    currentRow += 2;
+    currentRow += 1;
 
     for (let shelfNumber = 1; shelfNumber <= 8; shelfNumber += 1) {
       const key = `${module.id}-${shelfNumber}`;
