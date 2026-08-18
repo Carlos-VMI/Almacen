@@ -80,12 +80,14 @@ create table if not exists public.almacen_notificacion_emails (
   almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
   categoria text not null default 'reposicion',
   email text not null,
+  activo boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 alter table public.almacen_notificacion_emails
-  add column if not exists categoria text not null default 'reposicion';
+  add column if not exists categoria text not null default 'reposicion',
+  add column if not exists activo boolean not null default true;
 
 alter table public.almacen_notificacion_emails
   drop constraint if exists almacen_notificacion_emails_categoria_check;

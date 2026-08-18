@@ -475,9 +475,19 @@ select:focus {
   text-align: left;
 }
 
+.warehouse-card.selected {
+  background: #f0f7ff;
+  border-color: #0b74bd;
+  box-shadow: inset 4px 0 0 #0b74bd;
+}
+
 .warehouse-card:hover {
   border-color: #0b74bd;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+}
+
+.warehouse-card.selected:hover {
+  box-shadow: inset 4px 0 0 #0b74bd, 0 10px 24px rgba(15, 23, 42, 0.08);
 }
 
 .warehouse-card strong,
@@ -502,40 +512,32 @@ select:focus {
 .warehouse-check {
   align-items: center;
   appearance: none;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
+  background: #e2e8f0;
+  border: 0;
   border-radius: 999px;
+  color: #475569;
   display: flex;
   flex: 0 0 auto;
-  height: 18px;
+  font-size: 11px;
+  font-weight: 900;
+  height: auto;
   justify-content: center;
-  line-height: 0;
+  line-height: 1;
   margin-top: 0;
-  padding: 0;
+  padding: 6px 9px;
   position: absolute;
   right: 12px;
   top: 12px;
-  width: 18px;
+  width: auto;
   z-index: 2;
   caret-color: transparent;
   cursor: pointer !important;
   user-select: none;
 }
 
-.warehouse-check span {
+.warehouse-card.selected .warehouse-check {
   background: #0b74bd;
-  border-radius: 999px;
-  display: block;
-  height: 8px;
-  margin: 0;
-  left: 50%;
-  position: absolute;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  width: 8px;
-  caret-color: transparent;
-  cursor: inherit !important;
-  user-select: none;
+  color: #ffffff;
 }
 
 .warehouse-card strong {
@@ -729,6 +731,11 @@ select:focus {
 .status-badge.inactive {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.status-badge.blocked {
+  background: #f1f5f9;
+  color: #64748b;
 }
 
 .modal-backdrop {
@@ -996,6 +1003,10 @@ tr:last-child td {
   grid-template-columns: minmax(300px, 0.8fr) repeat(2, minmax(320px, 1fr));
 }
 
+.reports-grid {
+  grid-template-columns: minmax(280px, 0.6fr) minmax(420px, 1fr);
+}
+
 .notification-list-panel {
   min-width: 0;
 }
@@ -1058,6 +1069,13 @@ tr:last-child td {
   padding: 6px 8px 6px 12px;
 }
 
+.notification-email-main {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
 .notification-email-row input {
   min-height: 38px;
 }
@@ -1076,6 +1094,33 @@ tr:last-child td {
   display: inline-flex;
   flex: 0 0 auto;
   gap: 8px;
+}
+
+.status-toggle-button {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.status-toggle-button.active {
+  background: #fff7ed;
+  border-color: #fdba74;
+  color: #c2410c;
+}
+
+.status-toggle-button.blocked {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.status-toggle-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .sku-suffix-panel {
