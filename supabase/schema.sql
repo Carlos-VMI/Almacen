@@ -78,10 +78,27 @@ alter table public.almacen_configuracion
 create table if not exists public.almacen_notificacion_emails (
   id uuid primary key default gen_random_uuid(),
   almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
+  categoria text not null default 'reposicion',
   email text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.almacen_notificacion_emails
+  add column if not exists categoria text not null default 'reposicion';
+
+alter table public.almacen_notificacion_emails
+  drop constraint if exists almacen_notificacion_emails_categoria_check;
+
+alter table public.almacen_notificacion_emails
+  add constraint almacen_notificacion_emails_categoria_check
+  check (categoria in ('reposicion', 'informes'));
+
+insert into public.almacen_notificacion_emails (almacen_id, categoria, email)
+select almacen_id, 'reposicion', lower(trim(notificacion_reposicion_email))
+from public.almacen_configuracion
+where nullif(trim(coalesce(notificacion_reposicion_email, '')), '') is not null
+on conflict do nothing;
 
 create table if not exists public.almacen_iot_controladores (
   id uuid primary key default gen_random_uuid(),
@@ -160,7 +177,8 @@ create unique index if not exists almacen_operadores_email_key on public.almacen
 create unique index if not exists almacen_admins_username_key on public.almacen_admins (username);
 create unique index if not exists almacen_admins_email_key on public.almacen_admins (email);
 create unique index if not exists almacen_configuracion_almacen_key on public.almacen_configuracion (almacen_id);
-create unique index if not exists almacen_notificacion_emails_almacen_email_key on public.almacen_notificacion_emails (almacen_id, email);
+drop index if exists almacen_notificacion_emails_almacen_email_key;
+create unique index if not exists almacen_notificacion_emails_almacen_categoria_email_key on public.almacen_notificacion_emails (almacen_id, categoria, email);
 create unique index if not exists almacen_iot_controladores_nombre_key on public.almacen_iot_controladores (almacen_id, nombre);
 create unique index if not exists almacen_cubetas_catalogo_codigo_key on public.almacen_cubetas_catalogo (almacen_id, codigo);
 create unique index if not exists almacen_modulos_orden_key on public.almacen_modulos (almacen_id, orden);

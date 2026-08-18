@@ -1906,11 +1906,129 @@ function SystemAdministration() {
   );
 }
 
+const NOTIFICATION_CATEGORIES = {
+  reposicion: {
+    title: 'Correos de Reposición',
+    eyebrow: 'Prioridad alta',
+    description: 'Destinatarios que recibirán los archivos .xls de reposición.',
+    placeholder: 'reposicion@empresa.com',
+    addLabel: 'Agregar correo de reposición',
+    empty: 'Sin correos de reposición.',
+  },
+  informes: {
+    title: 'Informes y Reportes de Gestión',
+    eyebrow: 'Gestión',
+    description: 'Destinatarios para futuros informes de transacciones, consumos y métricas.',
+    placeholder: 'gestion@empresa.com',
+    addLabel: 'Agregar correo de informes',
+    empty: 'Sin correos de informes.',
+  },
+};
+
+function normalizeNotificationCategory(value) {
+  return value === 'informes' ? 'informes' : 'reposicion';
+}
+
+function NotificationEmailSection({
+  category,
+  emails,
+  draft,
+  editingEmail,
+  editValue,
+  saving,
+  deletingId,
+  onDraftChange,
+  onAdd,
+  onEdit,
+  onEditValueChange,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+}) {
+  const meta = NOTIFICATION_CATEGORIES[category];
+
+  return (
+    <section className="inventory-panel notification-list-panel">
+      <div className="panel-heading inventory-heading">
+        <div>
+          <span className="eyebrow">{meta.eyebrow}</span>
+          <h2>{meta.title}</h2>
+        </div>
+        <span className="counter-pill">{emails.length}</span>
+      </div>
+      <p className="panel-description compact-description">{meta.description}</p>
+
+      <form className="inline-email-form notification-add-form" onSubmit={(event) => onAdd(event, category)}>
+        <input
+          type="email"
+          value={draft}
+          onChange={(event) => onDraftChange(category, event.target.value)}
+          placeholder={meta.placeholder}
+        />
+        <button className="primary-button" type="submit" disabled={saving}>
+          <Plus size={18} />
+          {meta.addLabel}
+        </button>
+      </form>
+
+      <div className="notification-email-list">
+        {emails.length ? emails.map((item) => {
+          const isEditing = editingEmail?.id === item.id;
+
+          return (
+            <div className="notification-email-row" key={item.id}>
+              {isEditing ? (
+                <input
+                  type="email"
+                  value={editValue}
+                  onChange={(event) => onEditValueChange(event.target.value)}
+                  autoFocus
+                />
+              ) : (
+                <strong>{item.email}</strong>
+              )}
+
+              <div className="notification-row-actions">
+                {isEditing ? (
+                  <>
+                    <button className="icon-button" type="button" onClick={() => onSaveEdit(item)} disabled={saving} aria-label="Guardar correo">
+                      <Save size={16} />
+                    </button>
+                    <button className="icon-button" type="button" onClick={onCancelEdit} disabled={saving} aria-label="Cancelar edición">
+                      <X size={16} />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="icon-button" type="button" onClick={() => onEdit(item)} aria-label="Editar correo">
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      className="icon-button danger"
+                      type="button"
+                      onClick={() => onDelete(item)}
+                      disabled={deletingId === item.id}
+                      aria-label="Eliminar correo"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        }) : <div className="empty-inline">{meta.empty}</div>}
+      </div>
+    </section>
+  );
+}
+
 function NotificationsManager({ warehouse }) {
   const [configId, setConfigId] = useState(null);
-  const [primaryEmail, setPrimaryEmail] = useState('');
-  const [ccEmail, setCcEmail] = useState('');
-  const [ccEmails, setCcEmails] = useState([]);
+  const [emailDrafts, setEmailDrafts] = useState({ reposicion: '', informes: '' });
+  const [notificationEmails, setNotificationEmails] = useState([]);
+  const [editingEmail, setEditingEmail] = useState(null);
+  const [editEmailValue, setEditEmailValue] = useState('');
   const [sendOnOrder, setSendOnOrder] = useState(true);
   const [dailySummary, setDailySummary] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -1949,10 +2067,19 @@ function NotificationsManager({ warehouse }) {
     }
 
     setConfigId(configData?.id ?? null);
-    setPrimaryEmail(configData?.notificacion_reposicion_email || '');
     setSendOnOrder(configData?.enviar_reporte_orden !== false);
     setDailySummary(Boolean(configData?.enviar_resumen_diario));
-    setCcEmails(emailData || []);
+    const rows = (emailData || []).map((item) => ({
+      ...item,
+      categoria: normalizeNotificationCategory(item.categoria),
+    }));
+    const legacyEmail = String(configData?.notificacion_reposicion_email || '').trim().toLowerCase();
+    const hasLegacyInRows = rows.some((item) => item.email === legacyEmail);
+    setNotificationEmails(
+      legacyEmail && !hasLegacyInRows
+        ? [{ id: `legacy:${configData?.id || warehouse.id}`, almacen_id: warehouse.id, email: legacyEmail, categoria: 'reposicion', legacy: true }, ...rows]
+        : rows
+    );
   }
 
   async function saveNotificationConfig(event) {
@@ -1963,7 +2090,6 @@ function NotificationsManager({ warehouse }) {
 
     const record = {
       almacen_id: warehouse.id,
-      notificacion_reposicion_email: primaryEmail.trim().toLowerCase() || null,
       enviar_reporte_orden: sendOnOrder,
       enviar_resumen_diario: dailySummary,
     };
@@ -1985,9 +2111,14 @@ function NotificationsManager({ warehouse }) {
     setStatus('Notificaciones guardadas.');
   }
 
-  async function addCcEmail(event) {
+  function updateDraft(category, value) {
+    setEmailDrafts((current) => ({ ...current, [category]: value }));
+  }
+
+  async function addNotificationEmail(event, category) {
     event.preventDefault();
-    const email = ccEmail.trim().toLowerCase();
+    const normalizedCategory = normalizeNotificationCategory(category);
+    const email = emailDrafts[normalizedCategory].trim().toLowerCase();
 
     if (!email) return;
 
@@ -1997,7 +2128,10 @@ function NotificationsManager({ warehouse }) {
 
     const { error: saveError } = await supabase
       .from('almacen_notificacion_emails')
-      .upsert({ almacen_id: warehouse.id, email }, { onConflict: 'almacen_id,email' });
+      .upsert(
+        { almacen_id: warehouse.id, email, categoria: normalizedCategory },
+        { onConflict: 'almacen_id,categoria,email' }
+      );
 
     setSaving(false);
 
@@ -2006,17 +2140,99 @@ function NotificationsManager({ warehouse }) {
       return;
     }
 
-    setCcEmail('');
+    updateDraft(normalizedCategory, '');
     setStatus('Correo agregado.');
     loadNotifications();
   }
 
-  async function deleteCcEmail(emailRow) {
+  function startEditEmail(emailRow) {
+    setEditingEmail(emailRow);
+    setEditEmailValue(emailRow.email || '');
+  }
+
+  function cancelEditEmail() {
+    setEditingEmail(null);
+    setEditEmailValue('');
+  }
+
+  async function saveEditedEmail(emailRow) {
+    const email = editEmailValue.trim().toLowerCase();
+    if (!email) return;
+
+    setSaving(true);
+    setError('');
+    setStatus('');
+
+    if (emailRow.legacy) {
+      const record = {
+        almacen_id: warehouse.id,
+        notificacion_reposicion_email: email,
+        enviar_reporte_orden: sendOnOrder,
+        enviar_resumen_diario: dailySummary,
+      };
+      const { data, error: saveError } = await supabase
+        .from('almacen_configuracion')
+        .upsert(configId ? { ...record, id: configId } : record, { onConflict: 'almacen_id' })
+        .select()
+        .single();
+
+      setSaving(false);
+      if (saveError) {
+        setError(saveError.message);
+        return;
+      }
+      setConfigId(data?.id ?? configId);
+      cancelEditEmail();
+      loadNotifications();
+      return;
+    }
+
+    const { error: saveError } = await supabase
+      .from('almacen_notificacion_emails')
+      .update({ email, categoria: normalizeNotificationCategory(emailRow.categoria) })
+      .eq('id', emailRow.id);
+
+    setSaving(false);
+
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+
+    cancelEditEmail();
+    setStatus('Correo actualizado.');
+    loadNotifications();
+  }
+
+  async function deleteNotificationEmail(emailRow) {
     if (!emailRow?.id) return;
 
     setDeletingId(emailRow.id);
     setError('');
     setStatus('');
+
+    if (emailRow.legacy) {
+      const record = {
+        almacen_id: warehouse.id,
+        notificacion_reposicion_email: null,
+        enviar_reporte_orden: sendOnOrder,
+        enviar_resumen_diario: dailySummary,
+      };
+      const { data, error: deleteError } = await supabase
+        .from('almacen_configuracion')
+        .upsert(configId ? { ...record, id: configId } : record, { onConflict: 'almacen_id' })
+        .select()
+        .single();
+
+      setDeletingId(null);
+      if (deleteError) {
+        setError(deleteError.message);
+        return;
+      }
+      setConfigId(data?.id ?? configId);
+      setNotificationEmails((current) => current.filter((item) => item.id !== emailRow.id));
+      return;
+    }
 
     const { error: deleteError } = await supabase
       .from('almacen_notificacion_emails')
@@ -2030,8 +2246,13 @@ function NotificationsManager({ warehouse }) {
       return;
     }
 
-    setCcEmails((current) => current.filter((item) => item.id !== emailRow.id));
+    setNotificationEmails((current) => current.filter((item) => item.id !== emailRow.id));
   }
+
+  const emailsByCategory = useMemo(() => ({
+    reposicion: notificationEmails.filter((item) => normalizeNotificationCategory(item.categoria) === 'reposicion'),
+    informes: notificationEmails.filter((item) => normalizeNotificationCategory(item.categoria) === 'informes'),
+  }), [notificationEmails]);
 
   return (
     <div className="content-grid notifications-grid">
@@ -2043,9 +2264,6 @@ function NotificationsManager({ warehouse }) {
           </div>
           <Bell size={22} />
         </div>
-        <p className="panel-description">
-          Define los destinatarios que recibirán automáticamente los archivos de reposición (.xls) y alertas operativas de este almacén.
-        </p>
         <div className="settings-context">
           <span>Almacén activo</span>
           <strong>{warehouse.nombre}</strong>
@@ -2053,16 +2271,6 @@ function NotificationsManager({ warehouse }) {
 
         {loading ? <div className="loading-box">Cargando notificaciones...</div> : (
           <form className="stack-form" onSubmit={saveNotificationConfig}>
-            <label>
-              Correo principal de reposición
-              <input
-                type="email"
-                value={primaryEmail}
-                onChange={(event) => setPrimaryEmail(event.target.value)}
-                placeholder="reposicion@empresa.com"
-              />
-            </label>
-
             <div className="trigger-group">
               <span>Frecuencia / Disparador</span>
               <label className="check-row">
@@ -2079,7 +2287,7 @@ function NotificationsManager({ warehouse }) {
                   checked={dailySummary}
                   onChange={(event) => setDailySummary(event.target.checked)}
                 />
-                Enviar resumen diario
+                Enviar resumen de consumo
               </label>
             </div>
 
@@ -2094,45 +2302,39 @@ function NotificationsManager({ warehouse }) {
         {status && <div className="import-status">{status}</div>}
       </section>
 
-      <section className="inventory-panel">
-        <div className="panel-heading inventory-heading">
-          <div>
-            <span className="eyebrow">Copia</span>
-            <h2>Correos secundarios / CC</h2>
-          </div>
-          <span className="counter-pill">{ccEmails.length}</span>
-        </div>
+      <NotificationEmailSection
+        category="reposicion"
+        emails={emailsByCategory.reposicion}
+        draft={emailDrafts.reposicion}
+        editingEmail={editingEmail}
+        editValue={editEmailValue}
+        saving={saving}
+        deletingId={deletingId}
+        onDraftChange={updateDraft}
+        onAdd={addNotificationEmail}
+        onEdit={startEditEmail}
+        onEditValueChange={setEditEmailValue}
+        onCancelEdit={cancelEditEmail}
+        onSaveEdit={saveEditedEmail}
+        onDelete={deleteNotificationEmail}
+      />
 
-        <form className="inline-email-form" onSubmit={addCcEmail}>
-          <input
-            type="email"
-            value={ccEmail}
-            onChange={(event) => setCcEmail(event.target.value)}
-            placeholder="compras@empresa.com"
-          />
-          <button className="primary-button" type="submit" disabled={saving}>
-            <Plus size={18} />
-            Agregar
-          </button>
-        </form>
-
-        <div className="notification-email-list">
-          {ccEmails.length ? ccEmails.map((item) => (
-            <div className="notification-email-row" key={item.id}>
-              <strong>{item.email}</strong>
-              <button
-                className="icon-button danger"
-                type="button"
-                onClick={() => deleteCcEmail(item)}
-                disabled={deletingId === item.id}
-                aria-label="Eliminar correo"
-              >
-                <Trash2 size={17} />
-              </button>
-            </div>
-          )) : <div className="empty-inline">Sin correos secundarios.</div>}
-        </div>
-      </section>
+      <NotificationEmailSection
+        category="informes"
+        emails={emailsByCategory.informes}
+        draft={emailDrafts.informes}
+        editingEmail={editingEmail}
+        editValue={editEmailValue}
+        saving={saving}
+        deletingId={deletingId}
+        onDraftChange={updateDraft}
+        onAdd={addNotificationEmail}
+        onEdit={startEditEmail}
+        onEditValueChange={setEditEmailValue}
+        onCancelEdit={cancelEditEmail}
+        onSaveEdit={saveEditedEmail}
+        onDelete={deleteNotificationEmail}
+      />
     </div>
   );
 }
@@ -2951,14 +3153,14 @@ function Dashboard({ session }) {
         <WarehouseWorkspace warehouse={selectedWarehouse} />
       ) : (
         <>
-          <nav className="tabs root-tabs">
+          <nav className="tabs root-tabs select-none">
             <button className={rootTab === 'bases' ? 'active' : ''} onClick={() => setRootTab('bases')}>
               <Database size={17} />
-              Bases de Datos / Almacenes
+              Bases de datos
             </button>
             <button className={rootTab === 'sistema' ? 'active' : ''} onClick={() => setRootTab('sistema')}>
               <Settings size={17} />
-              Administración del Sistema
+              Administración del sistema
             </button>
           </nav>
 
