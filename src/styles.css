@@ -512,32 +512,36 @@ select:focus {
 .warehouse-check {
   align-items: center;
   appearance: none;
-  background: #e2e8f0;
-  border: 0;
+  background: #cbd5e1;
+  border: 2px solid #ffffff;
   border-radius: 999px;
-  color: #475569;
   display: flex;
   flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 900;
-  height: auto;
+  height: 16px;
   justify-content: center;
   line-height: 1;
   margin-top: 0;
-  padding: 6px 9px;
+  overflow: hidden;
+  padding: 0;
   position: absolute;
   right: 12px;
   top: 12px;
-  width: auto;
+  width: 16px;
   z-index: 2;
   caret-color: transparent;
   cursor: pointer !important;
   user-select: none;
 }
 
+.warehouse-check span {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
 .warehouse-card.selected .warehouse-check {
   background: #0b74bd;
-  color: #ffffff;
+  border-color: #bfdbfe;
 }
 
 .warehouse-card strong {
@@ -719,6 +723,7 @@ select:focus {
   font-size: 12px;
   font-weight: 900;
   min-width: 72px;
+  width: 92px;
   justify-content: center;
   padding: 6px 10px;
 }
@@ -1003,8 +1008,10 @@ tr:last-child td {
   grid-template-columns: minmax(300px, 0.8fr) repeat(2, minmax(320px, 1fr));
 }
 
-.reports-grid {
-  grid-template-columns: minmax(280px, 0.6fr) minmax(420px, 1fr);
+.reports-layout {
+  display: grid;
+  gap: 14px;
+  max-width: 780px;
 }
 
 .notification-list-panel {
@@ -1103,7 +1110,9 @@ tr:last-child td {
   font-size: 12px;
   font-weight: 900;
   min-height: 32px;
+  min-width: 86px;
   padding: 6px 10px;
+  text-align: center;
 }
 
 .status-toggle-button.active {

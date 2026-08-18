@@ -726,8 +726,13 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
             <div className="warehouse-grid">
               {warehouses.map((warehouse) => (
                 <article className={`warehouse-card ${selectedIds.includes(warehouse.id) ? 'selected' : ''}`} key={warehouse.id}>
-                  <button className="warehouse-check" type="button" onClick={() => toggleWarehouse(warehouse.id)} aria-label={`Seleccionar ${warehouse.nombre}`}>
-                    {selectedIds.includes(warehouse.id) ? 'Seleccionada' : 'Seleccionar'}
+                  <button
+                    className="warehouse-check"
+                    type="button"
+                    onClick={() => toggleWarehouse(warehouse.id)}
+                    aria-label={selectedIds.includes(warehouse.id) ? `Base seleccionada: ${warehouse.nombre}` : `Seleccionar ${warehouse.nombre}`}
+                  >
+                    <span aria-hidden="true" />
                   </button>
                   <button className="warehouse-open" type="button" onClick={() => onOpen(warehouse)}>
                     <div className="warehouse-icon">
@@ -1907,12 +1912,11 @@ function SystemAdministration() {
 
 const NOTIFICATION_CATEGORIES = {
   reposicion: {
-    title: 'Correos de reposición',
-    eyebrow: 'Reportes',
-    description: 'Destinatarios activos que recibirán los archivos .xls de reposición de este almacén.',
+    title: 'Reporte de reposición',
+    eyebrow: '',
     placeholder: 'reposicion@empresa.com',
-    addLabel: 'Agregar correo de reposición',
-    empty: 'Sin correos de reposición.',
+    addLabel: 'Agregar correo',
+    empty: 'No hay correos cargados.',
   },
 };
 
@@ -1941,14 +1945,13 @@ function NotificationEmailSection({
 
   return (
     <section className="inventory-panel notification-list-panel">
-      <div className="panel-heading inventory-heading">
+      <div className="panel-heading inventory-heading report-heading-clean">
         <div>
-          <span className="eyebrow">{meta.eyebrow}</span>
+          {meta.eyebrow ? <span className="eyebrow">{meta.eyebrow}</span> : null}
           <h2>{meta.title}</h2>
         </div>
         <span className="counter-pill">{emails.length}</span>
       </div>
-      <p className="panel-description compact-description">{meta.description}</p>
 
       <form className="inline-email-form notification-add-form" onSubmit={(event) => onAdd(event, category)}>
         <input
@@ -2102,7 +2105,6 @@ function NotificationsManager({ warehouse }) {
     }
 
     updateDraft(normalizedCategory, '');
-    setStatus('Correo agregado.');
     loadNotifications();
   }
 
@@ -2137,7 +2139,6 @@ function NotificationsManager({ warehouse }) {
     }
 
     cancelEditEmail();
-    setStatus('Correo actualizado.');
     loadNotifications();
   }
 
@@ -2192,27 +2193,8 @@ function NotificationsManager({ warehouse }) {
   }), [notificationEmails]);
 
   return (
-    <div className="content-grid reports-grid">
-      <section className="form-panel notification-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Reportes</span>
-            <h2>Reporte de reposición</h2>
-          </div>
-          <FileSpreadsheet size={22} />
-        </div>
-        <div className="settings-context">
-          <span>Almacén activo</span>
-          <strong>{warehouse.nombre}</strong>
-        </div>
-        <p className="panel-description">
-          Gestiona los destinatarios del archivo .xls que se genera al crear un pedido de reposición.
-        </p>
-
-        {error && <div className="error-box">{error}</div>}
-        {status && <div className="import-status">{status}</div>}
-      </section>
-
+    <div className="reports-layout">
+      {error && <div className="error-box">{error}</div>}
       <NotificationEmailSection
         category="reposicion"
         emails={emailsByCategory.reposicion}
