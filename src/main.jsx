@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ArrowLeft,
+  Bell,
   Boxes,
   Building2,
   Cpu,
@@ -737,6 +738,7 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
                       <strong>{warehouse.nombre}</strong>
                       <span>{warehouse.ubicacion}</span>
                       {warehouse.descripcion && <small>{warehouse.descripcion}</small>}
+                      <em>Ingresar al almacén →</em>
                     </div>
                   </button>
                 </article>
@@ -1668,24 +1670,20 @@ function AdminEditModal({ open, mode, form, setForm, saving, error, onClose, onS
   );
 }
 
-function AdministrationManager({ warehouse }) {
+function SystemAdministration() {
   const [admins, setAdmins] = useState([]);
   const [selected, setSelected] = useState(null);
   const [adminModalMode, setAdminModalMode] = useState(null);
   const [adminForm, setAdminForm] = useState(emptyAdmin);
-  const [notificationEmails, setNotificationEmails] = useState([]);
-  const [notificationEmail, setNotificationEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingAdmin, setSavingAdmin] = useState(false);
-  const [savingEmail, setSavingEmail] = useState(false);
-  const [deletingEmailId, setDeletingEmailId] = useState(null);
   const [error, setError] = useState('');
   const [modalError, setModalError] = useState('');
   const [status, setStatus] = useState('');
 
   useEffect(() => {
-    loadAdministration();
-  }, [warehouse.id]);
+    loadAdministrators();
+  }, []);
 
   useEffect(() => {
     setAdminForm(selected && adminModalMode === 'edit' ? {
@@ -1715,32 +1713,24 @@ function AdministrationManager({ warehouse }) {
     setModalError('');
   }
 
-  async function loadAdministration() {
+  async function loadAdministrators() {
     setLoading(true);
     setError('');
     setStatus('');
 
-    const [{ data: adminData, error: adminError }, { data: emailData, error: emailError }] = await Promise.all([
-      supabase
-        .from('almacen_admins')
-        .select('*')
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('almacen_notificacion_emails')
-        .select('*')
-        .eq('almacen_id', warehouse.id)
-        .order('created_at', { ascending: false }),
-    ]);
+    const { data: adminData, error: adminError } = await supabase
+      .from('almacen_admins')
+      .select('*')
+      .order('created_at', { ascending: false });
 
     setLoading(false);
 
-    if (adminError || emailError) {
-      setError(adminError?.message || emailError?.message);
+    if (adminError) {
+      setError(adminError.message);
       return;
     }
 
     setAdmins(adminData || []);
-    setNotificationEmails(emailData || []);
   }
 
   async function saveAdmin(event) {
@@ -1797,7 +1787,7 @@ function AdministrationManager({ warehouse }) {
     setSavingAdmin(false);
     closeAdminModal();
     setStatus(adminModalMode === 'create' ? 'Administrador creado.' : 'Administrador guardado.');
-    loadAdministration();
+    loadAdministrators();
   }
 
   async function deleteAdmin(admin) {
@@ -1836,70 +1826,15 @@ function AdministrationManager({ warehouse }) {
     }
 
     setStatus('Administrador eliminado.');
-    loadAdministration();
-  }
-
-  async function saveNotificationEmail(event) {
-    event.preventDefault();
-    const email = notificationEmail.trim().toLowerCase();
-
-    if (!email) {
-      setError('Indica un correo de reposición.');
-      return;
-    }
-
-    setSavingEmail(true);
-    setError('');
-    setStatus('');
-
-    const { error: saveError } = await supabase
-      .from('almacen_notificacion_emails')
-      .upsert({
-        almacen_id: warehouse.id,
-        email,
-      }, { onConflict: 'almacen_id,email' });
-
-    setSavingEmail(false);
-
-    if (saveError) {
-      setError(saveError.message);
-      return;
-    }
-
-    setNotificationEmail('');
-    setStatus('Correo agregado.');
-    loadAdministration();
-  }
-
-  async function deleteNotificationEmail(emailRow) {
-    if (!emailRow?.id) return;
-
-    setDeletingEmailId(emailRow.id);
-    setError('');
-    setStatus('');
-
-    const { error: deleteError } = await supabase
-      .from('almacen_notificacion_emails')
-      .delete()
-      .eq('id', emailRow.id);
-
-    setDeletingEmailId(null);
-
-    if (deleteError) {
-      setError(deleteError.message);
-      return;
-    }
-
-    setNotificationEmails((current) => current.filter((item) => item.id !== emailRow.id));
-    setStatus('Correo eliminado.');
+    loadAdministrators();
   }
 
   return (
-    <div className="admin-grid">
+    <div className="admin-grid single-column">
       <section className="inventory-panel admin-list-panel">
         <div className="panel-heading">
           <div>
-            <span className="eyebrow">Administración</span>
+            <span className="eyebrow">Administración del sistema</span>
             <h2>Gestión de administradores</h2>
           </div>
           <div className="heading-actions">
@@ -1957,53 +1892,6 @@ function AdministrationManager({ warehouse }) {
         )}
       </section>
 
-      <section className="form-panel admin-settings-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="eyebrow">Sistema</span>
-            <h2>Configuración de esta base</h2>
-          </div>
-          <Settings size={22} />
-        </div>
-        <div className="settings-context">
-          <span>Base activa</span>
-          <strong>{warehouse.nombre}</strong>
-        </div>
-        <form className="stack-form" onSubmit={saveNotificationEmail}>
-          <label>
-            Correo de notificaciones de reposición
-            <input
-              type="email"
-              value={notificationEmail}
-              onChange={(event) => setNotificationEmail(event.target.value)}
-              placeholder="compras@empresa.com"
-            />
-          </label>
-          <div className="settings-actions">
-            <button className="primary-button" type="submit" disabled={savingEmail}>
-              <Save size={18} />
-              {savingEmail ? 'Guardando...' : 'Agregar correo'}
-            </button>
-          </div>
-        </form>
-        <div className="notification-email-list">
-          {notificationEmails.length ? notificationEmails.map((item) => (
-            <div className="notification-email-row" key={item.id}>
-              <strong>{item.email}</strong>
-              <button
-                className="icon-button danger"
-                type="button"
-                onClick={() => deleteNotificationEmail(item)}
-                disabled={deletingEmailId === item.id}
-                aria-label="Eliminar correo"
-              >
-                <Trash2 size={17} />
-              </button>
-            </div>
-          )) : <div className="empty-inline">Sin correos configurados.</div>}
-        </div>
-      </section>
-
       <AdminEditModal
         open={Boolean(adminModalMode)}
         mode={adminModalMode}
@@ -2014,6 +1902,237 @@ function AdministrationManager({ warehouse }) {
         onClose={closeAdminModal}
         onSave={saveAdmin}
       />
+    </div>
+  );
+}
+
+function NotificationsManager({ warehouse }) {
+  const [configId, setConfigId] = useState(null);
+  const [primaryEmail, setPrimaryEmail] = useState('');
+  const [ccEmail, setCcEmail] = useState('');
+  const [ccEmails, setCcEmails] = useState([]);
+  const [sendOnOrder, setSendOnOrder] = useState(true);
+  const [dailySummary, setDailySummary] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
+  const [error, setError] = useState('');
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    loadNotifications();
+  }, [warehouse.id]);
+
+  async function loadNotifications() {
+    setLoading(true);
+    setError('');
+    setStatus('');
+
+    const [{ data: configData, error: configError }, { data: emailData, error: emailError }] = await Promise.all([
+      supabase
+        .from('almacen_configuracion')
+        .select('*')
+        .eq('almacen_id', warehouse.id)
+        .maybeSingle(),
+      supabase
+        .from('almacen_notificacion_emails')
+        .select('*')
+        .eq('almacen_id', warehouse.id)
+        .order('created_at', { ascending: false }),
+    ]);
+
+    setLoading(false);
+
+    if (configError || emailError) {
+      setError(configError?.message || emailError?.message);
+      return;
+    }
+
+    setConfigId(configData?.id ?? null);
+    setPrimaryEmail(configData?.notificacion_reposicion_email || '');
+    setSendOnOrder(configData?.enviar_reporte_orden !== false);
+    setDailySummary(Boolean(configData?.enviar_resumen_diario));
+    setCcEmails(emailData || []);
+  }
+
+  async function saveNotificationConfig(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError('');
+    setStatus('');
+
+    const record = {
+      almacen_id: warehouse.id,
+      notificacion_reposicion_email: primaryEmail.trim().toLowerCase() || null,
+      enviar_reporte_orden: sendOnOrder,
+      enviar_resumen_diario: dailySummary,
+    };
+
+    const { data, error: saveError } = await supabase
+      .from('almacen_configuracion')
+      .upsert(configId ? { ...record, id: configId } : record, { onConflict: 'almacen_id' })
+      .select()
+      .single();
+
+    setSaving(false);
+
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+
+    setConfigId(data?.id ?? configId);
+    setStatus('Notificaciones guardadas.');
+  }
+
+  async function addCcEmail(event) {
+    event.preventDefault();
+    const email = ccEmail.trim().toLowerCase();
+
+    if (!email) return;
+
+    setSaving(true);
+    setError('');
+    setStatus('');
+
+    const { error: saveError } = await supabase
+      .from('almacen_notificacion_emails')
+      .upsert({ almacen_id: warehouse.id, email }, { onConflict: 'almacen_id,email' });
+
+    setSaving(false);
+
+    if (saveError) {
+      setError(saveError.message);
+      return;
+    }
+
+    setCcEmail('');
+    setStatus('Correo agregado.');
+    loadNotifications();
+  }
+
+  async function deleteCcEmail(emailRow) {
+    if (!emailRow?.id) return;
+
+    setDeletingId(emailRow.id);
+    setError('');
+    setStatus('');
+
+    const { error: deleteError } = await supabase
+      .from('almacen_notificacion_emails')
+      .delete()
+      .eq('id', emailRow.id);
+
+    setDeletingId(null);
+
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+
+    setCcEmails((current) => current.filter((item) => item.id !== emailRow.id));
+  }
+
+  return (
+    <div className="content-grid notifications-grid">
+      <section className="form-panel notification-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="eyebrow">Notificaciones</span>
+            <h2>Configuración de Notificaciones y Reportes</h2>
+          </div>
+          <Bell size={22} />
+        </div>
+        <p className="panel-description">
+          Define los destinatarios que recibirán automáticamente los archivos de reposición (.xls) y alertas operativas de este almacén.
+        </p>
+        <div className="settings-context">
+          <span>Almacén activo</span>
+          <strong>{warehouse.nombre}</strong>
+        </div>
+
+        {loading ? <div className="loading-box">Cargando notificaciones...</div> : (
+          <form className="stack-form" onSubmit={saveNotificationConfig}>
+            <label>
+              Correo principal de reposición
+              <input
+                type="email"
+                value={primaryEmail}
+                onChange={(event) => setPrimaryEmail(event.target.value)}
+                placeholder="reposicion@empresa.com"
+              />
+            </label>
+
+            <div className="trigger-group">
+              <span>Frecuencia / Disparador</span>
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={sendOnOrder}
+                  onChange={(event) => setSendOnOrder(event.target.checked)}
+                />
+                Enviar reporte al generar orden
+              </label>
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={dailySummary}
+                  onChange={(event) => setDailySummary(event.target.checked)}
+                />
+                Enviar resumen diario
+              </label>
+            </div>
+
+            <button className="primary-button" type="submit" disabled={saving}>
+              <Save size={18} />
+              {saving ? 'Guardando...' : 'Guardar notificaciones'}
+            </button>
+          </form>
+        )}
+
+        {error && <div className="error-box">{error}</div>}
+        {status && <div className="import-status">{status}</div>}
+      </section>
+
+      <section className="inventory-panel">
+        <div className="panel-heading inventory-heading">
+          <div>
+            <span className="eyebrow">Copia</span>
+            <h2>Correos secundarios / CC</h2>
+          </div>
+          <span className="counter-pill">{ccEmails.length}</span>
+        </div>
+
+        <form className="inline-email-form" onSubmit={addCcEmail}>
+          <input
+            type="email"
+            value={ccEmail}
+            onChange={(event) => setCcEmail(event.target.value)}
+            placeholder="compras@empresa.com"
+          />
+          <button className="primary-button" type="submit" disabled={saving}>
+            <Plus size={18} />
+            Agregar
+          </button>
+        </form>
+
+        <div className="notification-email-list">
+          {ccEmails.length ? ccEmails.map((item) => (
+            <div className="notification-email-row" key={item.id}>
+              <strong>{item.email}</strong>
+              <button
+                className="icon-button danger"
+                type="button"
+                onClick={() => deleteCcEmail(item)}
+                disabled={deletingId === item.id}
+                aria-label="Eliminar correo"
+              >
+                <Trash2 size={17} />
+              </button>
+            </div>
+          )) : <div className="empty-inline">Sin correos secundarios.</div>}
+        </div>
+      </section>
     </div>
   );
 }
@@ -2698,9 +2817,9 @@ function WarehouseWorkspace({ warehouse }) {
           <Cpu size={17} />
           Controladores IoT
         </button>
-        <button className={tab === 'administracion' ? 'active' : ''} onClick={() => setTab('administracion')}>
-          <Settings size={17} />
-          Administración
+        <button className={tab === 'notificaciones' ? 'active' : ''} onClick={() => setTab('notificaciones')}>
+          <Bell size={17} />
+          Notificaciones
         </button>
         <button className="import-tab" type="button" onClick={() => fileInputRef.current?.click()}>
           <FileSpreadsheet size={17} />
@@ -2722,7 +2841,7 @@ function WarehouseWorkspace({ warehouse }) {
       {tab === 'estanteria' && <ShelvingManager warehouse={warehouse} />}
       {tab === 'cubetas' && <BoxCatalogManager warehouse={warehouse} />}
       {tab === 'iot' && <IoTControllersManager warehouse={warehouse} />}
-      {tab === 'administracion' && <AdministrationManager warehouse={warehouse} />}
+      {tab === 'notificaciones' && <NotificationsManager warehouse={warehouse} />}
     </>
   );
 }
@@ -2730,6 +2849,7 @@ function WarehouseWorkspace({ warehouse }) {
 function Dashboard({ session }) {
   const [warehouses, setWarehouses] = useState([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState(null);
+  const [rootTab, setRootTab] = useState('bases');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -2830,16 +2950,33 @@ function Dashboard({ session }) {
       {selectedWarehouse ? (
         <WarehouseWorkspace warehouse={selectedWarehouse} />
       ) : (
-        <WarehouseList
-          warehouses={warehouses}
-          onCreate={createWarehouse}
-          onUpdate={updateWarehouse}
-          onOpen={setSelectedWarehouse}
-          onDelete={deleteWarehouse}
-          onDeleteSelected={deleteSelectedWarehouses}
-          loading={loading}
-          error={error}
-        />
+        <>
+          <nav className="tabs root-tabs">
+            <button className={rootTab === 'bases' ? 'active' : ''} onClick={() => setRootTab('bases')}>
+              <Database size={17} />
+              Bases de Datos / Almacenes
+            </button>
+            <button className={rootTab === 'sistema' ? 'active' : ''} onClick={() => setRootTab('sistema')}>
+              <Settings size={17} />
+              Administración del Sistema
+            </button>
+          </nav>
+
+          {rootTab === 'bases' ? (
+            <WarehouseList
+              warehouses={warehouses}
+              onCreate={createWarehouse}
+              onUpdate={updateWarehouse}
+              onOpen={setSelectedWarehouse}
+              onDelete={deleteWarehouse}
+              onDeleteSelected={deleteSelectedWarehouses}
+              loading={loading}
+              error={error}
+            />
+          ) : (
+            <SystemAdministration />
+          )}
+        </>
       )}
     </main>
   );

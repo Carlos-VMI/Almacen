@@ -335,6 +335,10 @@ select:focus {
   max-width: 620px;
 }
 
+.admin-grid.single-column {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .admin-list-panel {
   min-width: 0;
 }
@@ -603,6 +607,10 @@ select:focus {
 
 .tabs .import-tab {
   margin-left: auto;
+}
+
+.root-tabs {
+  max-width: 760px;
 }
 
 .hidden-file {
@@ -970,6 +978,48 @@ tr:last-child td {
   display: grid;
   gap: 8px;
   margin-top: 14px;
+}
+
+.notifications-grid {
+  grid-template-columns: minmax(360px, 520px) minmax(0, 1fr);
+}
+
+.panel-description {
+  color: #475569;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  margin: -2px 0 14px;
+}
+
+.trigger-group {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.trigger-group > span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.inline-email-form {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.warehouse-open em {
+  color: #0b74bd;
+  display: block;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  margin-top: 8px;
 }
 
 .notification-email-row {

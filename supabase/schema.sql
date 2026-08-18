@@ -65,9 +65,15 @@ create table if not exists public.almacen_configuracion (
   id uuid primary key default gen_random_uuid(),
   almacen_id uuid not null references public.almacen_bases(id) on delete cascade,
   notificacion_reposicion_email text,
+  enviar_reporte_orden boolean not null default true,
+  enviar_resumen_diario boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.almacen_configuracion
+  add column if not exists enviar_reporte_orden boolean not null default true,
+  add column if not exists enviar_resumen_diario boolean not null default false;
 
 create table if not exists public.almacen_notificacion_emails (
   id uuid primary key default gen_random_uuid(),
