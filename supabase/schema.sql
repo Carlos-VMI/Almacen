@@ -270,6 +270,7 @@ drop policy if exists "Usuarios autenticados gestionan administradores web" on p
 drop policy if exists "Lectura publica limitada para login por username" on public.almacen_admins;
 drop policy if exists "Usuarios autenticados gestionan configuracion de almacen" on public.almacen_configuracion;
 drop policy if exists "Usuarios autenticados gestionan emails de reposicion" on public.almacen_notificacion_emails;
+drop policy if exists "Lectura publica de emails activos de reposicion" on public.almacen_notificacion_emails;
 drop policy if exists "Usuarios autenticados gestionan controladores iot de almacen" on public.almacen_iot_controladores;
 drop policy if exists "Usuarios autenticados gestionan catalogo de cubetas" on public.almacen_cubetas_catalogo;
 drop policy if exists "Usuarios autenticados gestionan modulos de almacen" on public.almacen_modulos;
@@ -316,8 +317,14 @@ to authenticated
 using (true)
 with check (true);
 
+create policy "Lectura publica de emails activos de reposicion"
+on public.almacen_notificacion_emails for select
+to anon
+using (categoria = 'reposicion' and activo = true);
+
 revoke all on public.almacen_admins from anon;
 grant select (username, email, activo) on public.almacen_admins to anon;
+grant select (id, almacen_id, categoria, email, activo, created_at, updated_at) on public.almacen_notificacion_emails to anon;
 
 create policy "Usuarios autenticados gestionan controladores iot de almacen"
 on public.almacen_iot_controladores for all
