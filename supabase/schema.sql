@@ -271,6 +271,13 @@ drop policy if exists "Lectura publica limitada para login por username" on publ
 drop policy if exists "Usuarios autenticados gestionan configuracion de almacen" on public.almacen_configuracion;
 drop policy if exists "Usuarios autenticados gestionan emails de reposicion" on public.almacen_notificacion_emails;
 drop policy if exists "Lectura publica de emails activos de reposicion" on public.almacen_notificacion_emails;
+drop policy if exists "Lectura publica operario bases" on public.almacen_bases;
+drop policy if exists "Lectura publica operario articulos" on public.almacen_articulos;
+drop policy if exists "Actualizacion publica operario estados articulos" on public.almacen_articulos;
+drop policy if exists "Lectura publica operario operadores activos" on public.almacen_operadores;
+drop policy if exists "Lectura publica operario configuracion" on public.almacen_configuracion;
+drop policy if exists "Lectura publica operario modulos" on public.almacen_modulos;
+drop policy if exists "Lectura publica operario estantes" on public.almacen_estantes;
 drop policy if exists "Usuarios autenticados gestionan controladores iot de almacen" on public.almacen_iot_controladores;
 drop policy if exists "Usuarios autenticados gestionan catalogo de cubetas" on public.almacen_cubetas_catalogo;
 drop policy if exists "Usuarios autenticados gestionan modulos de almacen" on public.almacen_modulos;
@@ -322,9 +329,52 @@ on public.almacen_notificacion_emails for select
 to anon
 using (categoria = 'reposicion' and activo = true);
 
+create policy "Lectura publica operario bases"
+on public.almacen_bases for select
+to anon
+using (true);
+
+create policy "Lectura publica operario articulos"
+on public.almacen_articulos for select
+to anon
+using (true);
+
+create policy "Actualizacion publica operario estados articulos"
+on public.almacen_articulos for update
+to anon
+using (true)
+with check (true);
+
+create policy "Lectura publica operario operadores activos"
+on public.almacen_operadores for select
+to anon
+using (activo = true);
+
+create policy "Lectura publica operario configuracion"
+on public.almacen_configuracion for select
+to anon
+using (true);
+
+create policy "Lectura publica operario modulos"
+on public.almacen_modulos for select
+to anon
+using (true);
+
+create policy "Lectura publica operario estantes"
+on public.almacen_estantes for select
+to anon
+using (true);
+
 revoke all on public.almacen_admins from anon;
 grant select (username, email, activo) on public.almacen_admins to anon;
+grant select on public.almacen_bases to anon;
+grant select on public.almacen_articulos to anon;
+grant update (sufijos, updated_at) on public.almacen_articulos to anon;
+grant select on public.almacen_operadores to anon;
+grant select on public.almacen_configuracion to anon;
 grant select (id, almacen_id, categoria, email, activo, created_at, updated_at) on public.almacen_notificacion_emails to anon;
+grant select on public.almacen_modulos to anon;
+grant select on public.almacen_estantes to anon;
 
 create policy "Usuarios autenticados gestionan controladores iot de almacen"
 on public.almacen_iot_controladores for all
