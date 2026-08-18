@@ -23,6 +23,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 import * as XLSX from 'xlsx';
 import { supabase } from './supabaseClient';
 import './styles.css';
@@ -59,6 +61,18 @@ function toNumber(value, fallback = 0) {
 function formatCm(value) {
   const numericValue = toNumber(value, 0);
   return Number.isInteger(numericValue) ? String(numericValue) : numericValue.toFixed(2);
+}
+
+function formatCmLabel(value) {
+  return `${formatCm(value)} cm`;
+}
+
+function moduleNumber(module, fallback = 1) {
+  return Math.max(1, toNumber(module?.orden, fallback));
+}
+
+function compactShelfSku(module, shelfNumber, position, fallbackModuleIndex = 1) {
+  return `M${moduleNumber(module, fallbackModuleIndex)}E${shelfNumber}C${position}`;
 }
 
 function clampShelfCount(value) {
@@ -171,6 +185,8 @@ function calculateLedMap({
   shelfWidthCm,
   controller,
   channel,
+  module,
+  moduleIndex = 1,
   shelfNumber = 1,
   moduleBaseOffsetCm = 0,
   routingMode = ROUTING_MODES.DIRECT,
@@ -196,6 +212,7 @@ function calculateLedMap({
     return {
       posicion: index + 1,
       etiqueta: `C${index + 1}`,
+      sku_ubicacion: compactShelfSku(module, shelfNumber, index + 1, moduleIndex),
       cubeta_id: cajon.cubeta_id ?? null,
       cubeta_codigo: cajon.cubeta_codigo ?? cajon.codigo ?? `C${index + 1}`,
       nombre: cajon.nombre ?? cajon.cubeta_nombre ?? '',
@@ -222,6 +239,7 @@ function normalizeShelfRecord(row, shelfWidthCm, module = {}, controllersById = 
     return {
       posicion: index + 1,
       etiqueta: `C${index + 1}`,
+      sku_ubicacion: current.sku_ubicacion ?? `M${moduleNumber(module, 1)}E${row?.numero ?? ''}C${index + 1}`,
       cubeta_id: current.cubeta_id ?? null,
       cubeta_codigo: current.cubeta_codigo ?? current.codigo ?? `C${index + 1}`,
       nombre: current.nombre ?? current.cubeta_nombre ?? '',
@@ -257,6 +275,8 @@ function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controller
     const currentCajon = existing.find((item) => toNumber(item.posicion) === index + 1) ?? existing[index] ?? {};
     return {
       posicion: index + 1,
+      etiqueta: `C${index + 1}`,
+      sku_ubicacion: currentCajon.sku_ubicacion ?? compactShelfSku(module, shelfNumber, index + 1),
       cubeta_id: currentCajon.cubeta_id ?? null,
       cubeta_codigo: currentCajon.cubeta_codigo ?? currentCajon.codigo ?? `C${index + 1}`,
       nombre: currentCajon.nombre ?? currentCajon.cubeta_nombre ?? '',
@@ -280,6 +300,8 @@ function buildShelfPayload(current, patch, shelfWidthCm, module = {}, controller
       shelfWidthCm: width,
       controller: controllersById.get(module?.controlador_id) ?? null,
       channel: module?.canal_led ?? 1,
+      module,
+      moduleIndex: moduleNumber(module, 1),
       shelfNumber,
       moduleBaseOffsetCm,
       routingMode: module?.routing_mode,
@@ -475,6 +497,221 @@ function downloadArticleImportTemplate() {
   const worksheet = XLSX.utils.json_to_sheet(rows);
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Articulos');
   XLSX.writeFile(workbook, 'plantilla_importacion_articulos.xlsx');
+}
+
+function styleWorksheetHeader(row) {
+  row.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B74BD' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = {
+      top: { style: 'thin', color: { argb: 'FF1E3A5F' } },
+      left: { style: 'thin', color: { argb: 'FF1E3A5F' } },
+      bottom: { style: 'thin', color: { argb: 'FF1E3A5F' } },
+      right: { style: 'thin', color: { argb: 'FF1E3A5F' } },
+    };
+  });
+}
+
+function applyBoxStyle(cell, fill = 'FFEAF4FF') {
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+  cell.font = { bold: true, color: { argb: 'FF0F172A' }, size: 10 };
+  cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  cell.border = {
+    top: { style: 'medium', color: { argb: 'FF2563EB' } },
+    left: { style: 'medium', color: { argb: 'FF2563EB' } },
+    bottom: { style: 'medium', color: { argb: 'FF2563EB' } },
+    right: { style: 'medium', color: { argb: 'FF2563EB' } },
+  };
+}
+
+function applyFreeStyle(cell) {
+  cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+  cell.font = { bold: true, color: { argb: 'FF64748B' }, size: 9 };
+  cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  cell.border = {
+    top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+    right: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+  };
+}
+
+async function exportarLayoutExcel({
+  warehouse,
+  modules,
+  shelves,
+  controllersById,
+  moduleShelfWidth,
+}) {
+  const workbook = new ExcelJS.Workbook();
+  workbook.creator = 'Smart WMS';
+  workbook.created = new Date();
+
+  const dataSheet = workbook.addWorksheet('Layout');
+  dataSheet.columns = [
+    { header: 'Modulo', key: 'modulo', width: 24 },
+    { header: 'Estante', key: 'estante', width: 10 },
+    { header: 'Cubeta', key: 'cubeta', width: 10 },
+    { header: 'SKU ubicacion', key: 'sku_ubicacion', width: 15 },
+    { header: 'Tipo cubeta', key: 'tipo_cubeta', width: 14 },
+    { header: 'Nombre', key: 'nombre', width: 18 },
+    { header: 'Ancho cm', key: 'ancho_cm', width: 12 },
+    { header: 'Controlador', key: 'controlador', width: 24 },
+    { header: 'Puerto', key: 'puerto', width: 10 },
+    { header: 'Ruta', key: 'ruta', width: 12 },
+    { header: 'StartLed', key: 'start_led', width: 10 },
+    { header: 'EndLed', key: 'end_led', width: 10 },
+    { header: 'LedCount', key: 'led_count', width: 10 },
+  ];
+  styleWorksheetHeader(dataSheet.getRow(1));
+
+  modules.forEach((module, moduleIndex) => {
+    const controller = controllersById.get(module.controlador_id);
+    for (let shelfNumber = 1; shelfNumber <= 8; shelfNumber += 1) {
+      const key = `${module.id}-${shelfNumber}`;
+      const record = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module), module, controllersById);
+      const widthLimit = moduleShelfWidth(module);
+      const occupiedWidth = record.cajones.reduce((sum, item) => sum + toNumber(item.ancho_cm, 0), 0);
+
+      record.cajones.forEach((cajon, cajonIndex) => {
+        dataSheet.addRow({
+          modulo: module.nombre,
+          estante: `E${shelfNumber}`,
+          cubeta: `C${cajonIndex + 1}`,
+          sku_ubicacion: cajon.sku_ubicacion || compactShelfSku(module, shelfNumber, cajonIndex + 1, moduleIndex + 1),
+          tipo_cubeta: cajon.cubeta_codigo || '',
+          nombre: cajon.nombre || '',
+          ancho_cm: toNumber(cajon.ancho_cm, 0),
+          controlador: controller?.nombre || '',
+          puerto: module.canal_led || '',
+          ruta: normalizeRoutingMode(module.routing_mode) === ROUTING_MODES.ZIGZAG ? 'Zig-Zag' : 'Snake',
+          start_led: cajon.startLed,
+          end_led: cajon.endLed,
+          led_count: cajon.ledCount,
+        });
+      });
+
+      const freeWidth = Math.max(0, widthLimit - occupiedWidth);
+      if (freeWidth > 0) {
+        dataSheet.addRow({
+          modulo: module.nombre,
+          estante: `E${shelfNumber}`,
+          cubeta: 'Libre',
+          sku_ubicacion: '',
+          tipo_cubeta: '',
+          nombre: '',
+          ancho_cm: freeWidth,
+          controlador: controller?.nombre || '',
+          puerto: module.canal_led || '',
+          ruta: normalizeRoutingMode(module.routing_mode) === ROUTING_MODES.ZIGZAG ? 'Zig-Zag' : 'Snake',
+          start_led: '',
+          end_led: '',
+          led_count: '',
+        });
+      }
+    }
+  });
+
+  dataSheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    row.eachCell((cell) => {
+      cell.alignment = { vertical: 'middle', horizontal: 'left' };
+      cell.border = {
+        bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+      };
+    });
+  });
+
+  const visualSheet = workbook.addWorksheet('Hoja 2');
+  const BASE_CELL_CM = 12.5;
+  const MAX_GRID_UNITS = 8;
+  visualSheet.getColumn(1).width = 8;
+  for (let column = 2; column <= MAX_GRID_UNITS + 1; column += 1) {
+    visualSheet.getColumn(column).width = 12;
+  }
+
+  let currentRow = 1;
+  modules.forEach((module, moduleIndex) => {
+    const moduleTitleRow = visualSheet.getRow(currentRow);
+    visualSheet.mergeCells(currentRow, 1, currentRow, MAX_GRID_UNITS + 1);
+    const moduleTitleCell = moduleTitleRow.getCell(1);
+    moduleTitleCell.value = module.nombre || `Módulo ${moduleIndex + 1}`;
+    moduleTitleCell.font = { bold: true, size: 14, color: { argb: 'FF0F172A' } };
+    moduleTitleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+    moduleTitleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    moduleTitleCell.border = {
+      top: { style: 'medium', color: { argb: 'FF0B74BD' } },
+      left: { style: 'medium', color: { argb: 'FF0B74BD' } },
+      bottom: { style: 'medium', color: { argb: 'FF0B74BD' } },
+      right: { style: 'medium', color: { argb: 'FF0B74BD' } },
+    };
+    moduleTitleRow.height = 24;
+    currentRow += 2;
+
+    for (let shelfNumber = 1; shelfNumber <= 8; shelfNumber += 1) {
+      const key = `${module.id}-${shelfNumber}`;
+      const record = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module), module, controllersById);
+      const widthLimit = moduleShelfWidth(module);
+      const occupiedWidth = record.cajones.reduce((sum, item) => sum + toNumber(item.ancho_cm, 0), 0);
+      const freeWidth = Math.max(0, widthLimit - occupiedWidth);
+      const row = visualSheet.getRow(currentRow);
+      row.height = 36;
+
+      const shelfCell = row.getCell(1);
+      shelfCell.value = `E${shelfNumber}`;
+      shelfCell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      shelfCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B74BD' } };
+      shelfCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      shelfCell.border = {
+        top: { style: 'medium', color: { argb: 'FF174A7C' } },
+        left: { style: 'medium', color: { argb: 'FF174A7C' } },
+        bottom: { style: 'medium', color: { argb: 'FF174A7C' } },
+        right: { style: 'medium', color: { argb: 'FF174A7C' } },
+      };
+
+      let excelColumn = 2;
+      const drawSegment = (units, value, type) => {
+        const span = Math.max(1, Math.min(MAX_GRID_UNITS - (excelColumn - 2), units));
+        if (span <= 0) return;
+        const startColumn = excelColumn;
+        const endColumn = excelColumn + span - 1;
+        if (endColumn > startColumn) visualSheet.mergeCells(currentRow, startColumn, currentRow, endColumn);
+        const cell = row.getCell(startColumn);
+        cell.value = value;
+        if (type === 'free') applyFreeStyle(cell);
+        else applyBoxStyle(cell);
+        excelColumn += span;
+      };
+
+      // Matemática visual: 1 celda Excel = 12.5 cm. Una cubeta de 25 cm ocupa
+      // 2 celdas fusionadas, 50 cm ocupa 4, y 100 cm ocupa 8.
+      record.cajones.forEach((cajon, cajonIndex) => {
+        const units = Math.max(1, Math.round(toNumber(cajon.ancho_cm, 0) / BASE_CELL_CM));
+        const sku = cajon.sku_ubicacion || compactShelfSku(module, shelfNumber, cajonIndex + 1, moduleIndex + 1);
+        drawSegment(units, `${cajon.cubeta_codigo || `C${cajonIndex + 1}`} - ${formatCmLabel(cajon.ancho_cm)}\n${sku}`, 'box');
+      });
+
+      if (freeWidth > 0.001 && excelColumn <= MAX_GRID_UNITS + 1) {
+        const units = Math.max(1, Math.round(freeWidth / BASE_CELL_CM));
+        drawSegment(units, `Libre\n${formatCmLabel(freeWidth)}`, 'free');
+      }
+
+      while (excelColumn <= MAX_GRID_UNITS + 1) {
+        drawSegment(1, '', 'free');
+      }
+
+      currentRow += 1;
+    }
+
+    currentRow += 2;
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  saveAs(blob, `layout-${warehouse.nombre || 'almacen'}.xlsx`);
 }
 
 function Login({ onLogin }) {
@@ -2621,6 +2858,8 @@ function ShelvingManager({ warehouse }) {
       ...current.cajones,
       {
         posicion: current.cajones.length + 1,
+        etiqueta: `C${current.cajones.length + 1}`,
+        sku_ubicacion: compactShelfSku(module, numero, current.cajones.length + 1),
         cubeta_id: boxType.id,
         cubeta_codigo: boxType.codigo,
         nombre: boxType.nombre,
@@ -2645,56 +2884,19 @@ function ShelvingManager({ warehouse }) {
     });
   }
 
-  function exportLayout() {
-    const rows = [];
-
-    modules.forEach((module) => {
-      const controller = controllersById.get(module.controlador_id);
-      for (let numero = 1; numero <= 8; numero += 1) {
-        const key = `${module.id}-${numero}`;
-        const record = shelves[key] || normalizeShelfRecord({ cantidad_baldas: 0 }, moduleShelfWidth(module), module, controllersById);
-        const widthLimit = moduleShelfWidth(module);
-        const occupiedWidth = record.cajones.reduce((sum, item) => sum + toNumber(item.ancho_cm, 0), 0);
-
-        record.cajones.forEach((cajon) => {
-          rows.push({
-            Modulo: module.nombre,
-            Estante: `E${numero}`,
-            Cubeta: cajon.cubeta_codigo,
-            Nombre: cajon.nombre,
-            AnchoCm: toNumber(cajon.ancho_cm, 0),
-            Controlador: controller?.nombre || '',
-            Puerto: module.canal_led || '',
-            Ruta: normalizeRoutingMode(module.routing_mode) === ROUTING_MODES.ZIGZAG ? 'Zig-Zag' : 'Snake',
-            StartLed: cajon.startLed,
-            EndLed: cajon.endLed,
-            LedCount: cajon.ledCount,
-          });
-        });
-
-        const freeWidth = Math.max(0, widthLimit - occupiedWidth);
-        if (freeWidth > 0) {
-          rows.push({
-            Modulo: module.nombre,
-            Estante: `E${numero}`,
-            Cubeta: 'Libre',
-            Nombre: '',
-            AnchoCm: freeWidth,
-            Controlador: controller?.nombre || '',
-            Puerto: module.canal_led || '',
-            Ruta: normalizeRoutingMode(module.routing_mode) === ROUTING_MODES.ZIGZAG ? 'Zig-Zag' : 'Snake',
-            StartLed: '',
-            EndLed: '',
-            LedCount: '',
-          });
-        }
-      }
-    });
-
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Layout');
-    XLSX.writeFile(workbook, `layout-${warehouse.nombre || 'almacen'}.xlsx`);
+  async function exportLayout() {
+    try {
+      await exportarLayoutExcel({
+        warehouse,
+        modules,
+        shelves,
+        controllersById,
+        moduleShelfWidth,
+      });
+      setError('');
+    } catch (exportError) {
+      setError(exportError?.message || 'No se pudo exportar el layout.');
+    }
   }
 
   return (
@@ -2813,7 +3015,7 @@ function ShelvingManager({ warehouse }) {
                 const freeWidth = Math.max(0, widthLimit - totalWidth);
                 const widthOk = totalWidth <= widthLimit;
                 return (
-                  <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'} ${openDropdownId === key ? 'dropdown-active' : ''}`} key={key}>
+                <div className={`rack-row digital-row ${widthOk ? '' : 'invalid'} ${openDropdownId === key ? 'dropdown-active' : ''}`} key={key}>
                     <span>E{numero}</span>
                     {shelfAlerts[key] && (
                       <div className="shelf-toast" role="alert">
@@ -2858,7 +3060,7 @@ function ShelvingManager({ warehouse }) {
                           style={{ flexBasis: `${Math.max(4, (toNumber(cajon.ancho_cm, 0) / widthLimit) * 100)}%` }}
                         >
                           <i>{cajon.cubeta_codigo || `C${shelfIndex + 1}`}</i>
-                          <small>{formatCm(cajon.ancho_cm)} cm</small>
+                          <small>{`C${shelfIndex + 1}`}</small>
                         </div>
                       ))}
                       {freeWidth > 0 && (
