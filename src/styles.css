@@ -29,11 +29,15 @@ select {
 
 button {
   cursor: pointer;
+  caret-color: transparent;
+  user-select: none;
 }
 
 button,
 button * {
+  caret-color: transparent;
   cursor: pointer !important;
+  user-select: none;
 }
 
 h1,
@@ -646,6 +650,25 @@ select:focus {
   padding: 10px 12px;
 }
 
+.import-status.inline {
+  margin: 0 0 12px;
+}
+
+.article-heading-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: min(100%, 460px);
+}
+
+.article-heading-actions .secondary-button {
+  flex: 0 0 auto;
+}
+
+.article-heading-actions .search-box {
+  flex: 1 1 auto;
+}
+
 .inventory-heading {
   margin-bottom: 16px;
 }
@@ -1011,11 +1034,24 @@ tr:last-child td {
 .reports-layout {
   display: grid;
   gap: 14px;
-  max-width: 780px;
+  max-width: none;
+  width: 100%;
+}
+
+.reports-main-grid {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
 }
 
 .notification-list-panel {
   min-width: 0;
+}
+
+.report-reposition-card {
+  width: 100%;
 }
 
 .panel-description {
@@ -1074,6 +1110,7 @@ tr:last-child td {
   justify-content: space-between;
   min-height: 46px;
   padding: 6px 8px 6px 12px;
+  width: 100%;
 }
 
 .notification-email-main {
@@ -1113,6 +1150,7 @@ tr:last-child td {
   min-width: 86px;
   padding: 6px 10px;
   text-align: center;
+  width: 86px;
 }
 
 .status-toggle-button.active {
@@ -1130,6 +1168,39 @@ tr:last-child td {
 .status-toggle-button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+.templates-panel {
+  min-width: 0;
+}
+
+.template-row {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px;
+}
+
+.template-row strong,
+.template-row span {
+  display: block;
+  min-width: 0;
+}
+
+.template-row strong {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.template-row span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 4px;
 }
 
 .sku-suffix-panel {

@@ -460,6 +460,23 @@ function buildImportRecords(rows, warehouseId) {
   }));
 }
 
+function downloadArticleImportTemplate() {
+  const rows = [
+    {
+      codigo_articulo: 'ART-001',
+      codigo_cliente: 'CLI-001',
+      descripcion: 'Descripcion del articulo',
+      sku: 'M1E1C3',
+      sufijo: '01',
+      capacidad: 100,
+    },
+  ];
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Articulos');
+  XLSX.writeFile(workbook, 'plantilla_importacion_articulos.xlsx');
+}
+
 function Login({ onLogin }) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -762,7 +779,7 @@ function WarehouseList({ warehouses, onCreate, onUpdate, onOpen, onDelete, onDel
   );
 }
 
-function ArticleManager({ warehouse, refreshKey }) {
+function ArticleManager({ warehouse, refreshKey, importStatus, onImportClick }) {
   const [articles, setArticles] = useState([]);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(cloneEmptyArticle);
@@ -1002,11 +1019,18 @@ function ArticleManager({ warehouse, refreshKey }) {
             <span className="eyebrow">Inventario</span>
             <h2>Artículos configurados</h2>
           </div>
-          <div className="search-box">
-            <Search size={18} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar..." />
+          <div className="article-heading-actions">
+            <button className="secondary-button" type="button" onClick={onImportClick}>
+              <FileSpreadsheet size={17} />
+              Importar
+            </button>
+            <div className="search-box">
+              <Search size={18} />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar..." />
+            </div>
           </div>
         </div>
+        {importStatus && <div className="import-status inline">{importStatus}</div>}
         {error && <div className="error-box">{error}</div>}
         {loading ? <div className="loading-box">Cargando artículos...</div> : (
           <div className="table-panel">
@@ -1944,7 +1968,7 @@ function NotificationEmailSection({
   const meta = NOTIFICATION_CATEGORIES[category];
 
   return (
-    <section className="inventory-panel notification-list-panel">
+    <section className="inventory-panel notification-list-panel report-reposition-card">
       <div className="panel-heading inventory-heading report-heading-clean">
         <div>
           {meta.eyebrow ? <span className="eyebrow">{meta.eyebrow}</span> : null}
@@ -2144,6 +2168,7 @@ function NotificationsManager({ warehouse }) {
 
   async function deleteNotificationEmail(emailRow) {
     if (!emailRow?.id) return;
+    if (!window.confirm(`Estás por borrar el correo "${emailRow.email}". ¿Deseas continuar?`)) return;
 
     setDeletingId(emailRow.id);
     setError('');
@@ -2195,23 +2220,45 @@ function NotificationsManager({ warehouse }) {
   return (
     <div className="reports-layout">
       {error && <div className="error-box">{error}</div>}
-      <NotificationEmailSection
-        category="reposicion"
-        emails={emailsByCategory.reposicion}
-        draft={emailDrafts.reposicion}
-        editingEmail={editingEmail}
-        editValue={editEmailValue}
-        saving={saving}
-        deletingId={deletingId}
-        onDraftChange={updateDraft}
-        onAdd={addNotificationEmail}
-        onEdit={startEditEmail}
-        onEditValueChange={setEditEmailValue}
-        onCancelEdit={cancelEditEmail}
-        onSaveEdit={saveEditedEmail}
-        onDelete={deleteNotificationEmail}
-        onToggleStatus={toggleNotificationStatus}
-      />
+      <div className="reports-main-grid">
+        <NotificationEmailSection
+          category="reposicion"
+          emails={emailsByCategory.reposicion}
+          draft={emailDrafts.reposicion}
+          editingEmail={editingEmail}
+          editValue={editEmailValue}
+          saving={saving}
+          deletingId={deletingId}
+          onDraftChange={updateDraft}
+          onAdd={addNotificationEmail}
+          onEdit={startEditEmail}
+          onEditValueChange={setEditEmailValue}
+          onCancelEdit={cancelEditEmail}
+          onSaveEdit={saveEditedEmail}
+          onDelete={deleteNotificationEmail}
+          onToggleStatus={toggleNotificationStatus}
+        />
+
+        <section className="inventory-panel templates-panel">
+          <div className="panel-heading inventory-heading">
+            <div>
+              <span className="eyebrow">Plantillas</span>
+              <h2>Descargas</h2>
+            </div>
+            <FileSpreadsheet size={21} />
+          </div>
+          <div className="template-row">
+            <div>
+              <strong>Importación de artículos</strong>
+              <span>Excel para cargar artículos desde la pestaña Artículos.</span>
+            </div>
+            <button className="secondary-button" type="button" onClick={downloadArticleImportTemplate}>
+              <FileSpreadsheet size={17} />
+              Descargar
+            </button>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -2900,10 +2947,6 @@ function WarehouseWorkspace({ warehouse }) {
           <FileSpreadsheet size={17} />
           Reportes
         </button>
-        <button className="import-tab" type="button" onClick={() => fileInputRef.current?.click()}>
-          <FileSpreadsheet size={17} />
-          Importar
-        </button>
         <input
           ref={fileInputRef}
           className="hidden-file"
@@ -2913,9 +2956,14 @@ function WarehouseWorkspace({ warehouse }) {
         />
       </nav>
 
-      {importStatus && <div className="import-status">{importStatus}</div>}
-
-      {tab === 'articulos' && <ArticleManager warehouse={warehouse} refreshKey={articleRefreshKey} />}
+      {tab === 'articulos' && (
+        <ArticleManager
+          warehouse={warehouse}
+          refreshKey={articleRefreshKey}
+          importStatus={importStatus}
+          onImportClick={() => fileInputRef.current?.click()}
+        />
+      )}
       {tab === 'usuarios' && <OperatorsManager warehouse={warehouse} />}
       {tab === 'estanteria' && <ShelvingManager warehouse={warehouse} />}
       {tab === 'cubetas' && <BoxCatalogManager warehouse={warehouse} />}
